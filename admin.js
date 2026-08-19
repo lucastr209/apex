@@ -52,6 +52,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             if (!timesArray || timesArray.length === 0) return "Chưa rõ giờ";
             let validTimes = timesArray.filter(t => t && String(t).trim() !== "" && t !== "Giờ tự do");
             if (validTimes.length === 0) return "Giờ tự do";
+
             let range = validTimes.find(t => String(t).includes('-') || String(t).includes('đến'));
             if (range) return range;
 
@@ -65,10 +66,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             });
 
             if (hours.length === 0) return validTimes.join(', ');
+
             hours = [...new Set(hours)].sort((a, b) => a - b);
             let result = [];
             let start = hours[0];
             let prev = hours[0];
+
             for (let i = 1; i < hours.length; i++) {
                 let curr = hours[i];
                 if (curr !== prev + 1) {
@@ -83,9 +86,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             return result.join(" & ");
         }
 
-        // ==============================================
-        // TÁCH LUỒNG XỬ LÝ DỮ LIỆU & GIAO DIỆN
-        // ==============================================
         function parseBookingsData() {
             globalGroupedBookings = {};
             let customers = {};
@@ -135,7 +135,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 
                 const groupKey = `${cName}_${court}_${status}_${docDateYMD}`;
 
-                // Phân tích ra các con số giờ nguyên thủy để nạp vào Timeline
                 let groupHours = new Set();
                 let str = String(time).toLowerCase();
                 let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
@@ -180,7 +179,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 }
             });
             
-            // Cập nhật bảng Khách hàng CRM
             const customerTbody = document.getElementById('customerTbody');
             customerTbody.innerHTML = "";
             Object.keys(customers).forEach(key => {
@@ -216,6 +214,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                     tr.setAttribute('data-court', group.court);
                     tr.setAttribute('data-time', displayTime);
                     tr.setAttribute('data-services', group.services.join('|||'));
+                    tr.setAttribute('data-raw-name', group.customerName); // Giữ tên gốc để edit
 
                     tr.innerHTML = `
                         <td class="booking-id" style="font-size:0.85rem !important;">${group.bookingCode}</td>
@@ -236,7 +235,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
 
             if (visibleCount === 0) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Không có lịch đặt sân nào trong ngày này.</td></tr>';
             
-            // Tính lại thống kê Dashboard
             let totalRevenue = 0; let totalPending = 0;
             document.querySelectorAll('#bookingTbody tr:not(.fade-out)').forEach(row => {
                 if(row.querySelector('.status-badge')) {
@@ -253,20 +251,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             attachMenuEvent();
         }
 
-        // 🔥 HÀM RENDER GIAO DIỆN TIMELINE MỚI 🔥
         function renderTimelineView() {
             const timelineContainer = document.getElementById('timelineContainer');
             const selectedDate = calendarDateInput.value;
             const startHour = 5;
             const endHour = 20;
 
-            // Xây dựng khung xương ma trận Timeline
             let timelineData = {};
             for(let h = startHour; h <= endHour; h++) {
                 timelineData[h] = { "1": null, "2": null, "3": null, "4": null };
             }
 
-            // Đổ dữ liệu vào Ma trận
             Object.values(globalGroupedBookings).forEach(group => {
                 if (group.dateYMD === selectedDate) {
                     let cIndex = null;
@@ -283,7 +278,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 }
             });
 
-            // Vẽ HTML Bảng Timeline
             let html = `<table class="timeline-table">
                 <thead>
                     <tr>
@@ -309,7 +303,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                                     </div>
                                  </td>`;
                     } else {
-                        // Khung giờ trống -> Có thể bấm vào để đặt lịch ngay
                         html += `<td class="tl-cell free" onclick="openBookingModalWithData('${c}', '${h}')">Trống</td>`;
                     }
                 });
@@ -319,7 +312,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             timelineContainer.innerHTML = html;
         }
 
-        // Bật Modal khi bấm vào ô trống trong Timeline
         window.openBookingModalWithData = function(courtNum, hour) {
             document.getElementById('bookingModal').classList.add('active');
             document.getElementById('timeSelect').value = `${String(hour).padStart(2, '0')}:00 - ${String(parseInt(hour)+1).padStart(2, '0')}:00`;
@@ -344,7 +336,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         });
 
         // ==============================================
-        // LẮNG NGHE YÊU CẦU & CỘNG TIỀN VÀO HÓA ĐƠN
+        // LẮNG NGHE YÊU CẦU DỊCH VỤ
         // ==============================================
         onSnapshot(query(requestsCollection, orderBy("createdAt", "desc")), (snapshot) => {
             reqList.innerHTML = ""; 
@@ -415,7 +407,41 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         });
 
         // ==============================================
-        // MENU 3 CHẤM VÀ IN HÓA ĐƠN CHI TIẾT
+        // TÍNH NĂNG 1: EXPORT EXCEL (XUẤT BÁO CÁO)
+        // ==============================================
+        document.getElementById('exportCsvBtn').addEventListener('click', () => {
+            let csvContent = "\uFEFF"; // Format chuẩn tiếng Việt UTF-8
+            csvContent += "Mã Booking,Khách Hàng,Sân/Giờ,Trạng Thái,Tiền\n";
+            
+            const rows = document.querySelectorAll('#bookingTbody tr:not(.fade-out)');
+            if(rows.length === 0 || rows[0].innerText.includes("Không có")) {
+                alert("Không có dữ liệu để xuất!"); return;
+            }
+
+            rows.forEach(row => {
+                let code = row.querySelector('.booking-id').innerText.trim();
+                let name = row.querySelector('.customer-name').innerText.trim();
+                let courtInfo = row.querySelector('strong').innerText.trim() + " (" + row.querySelector('.booking-time-muted').innerText.trim() + ")";
+                let status = row.querySelector('.status-badge').innerText.trim();
+                let price = row.querySelector('.amount').innerText.replace(/,/g, '').replace(' VNĐ', '').trim();
+                
+                // Đóng gói data bằng ngoặc kép để tránh lỗi dấu phẩy
+                csvContent += `"${code}","${name}","${courtInfo}","${status}","${price}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `BaoCao_ApexCourt_${dateFilterInput.value}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // ==============================================
+        // MENU 3 CHẤM, IN HÓA ĐƠN & TÍNH NĂNG 2: EDIT
         // ==============================================
         let targetRow = null; 
         const actionMenu = document.getElementById('actionMenu');
@@ -457,6 +483,45 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 try { for(let id of docIds) { await deleteDoc(doc(db, "bookings", id)); } } catch(e) { console.error(e); }
             }
             actionMenu.classList.remove('active');
+        });
+
+        // XỬ LÝ CHỈNH SỬA THÔNG TIN
+        document.getElementById('btnEdit').addEventListener('click', () => {
+            if(targetRow) {
+                document.getElementById('editCustomerName').value = targetRow.getAttribute('data-raw-name');
+                document.getElementById('editPrice').value = targetRow.getAttribute('data-price');
+                document.getElementById('editModal').classList.add('active');
+            }
+            actionMenu.classList.remove('active');
+        });
+
+        document.getElementById('closeEditModalBtn').addEventListener('click', () => document.getElementById('editModal').classList.remove('active'));
+
+        document.getElementById('editForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const newName = document.getElementById('editCustomerName').value;
+            const newPrice = parseInt(document.getElementById('editPrice').value);
+            const submitBtn = document.getElementById('submitEdit');
+            
+            submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
+
+            if(targetRow) {
+                const docIds = targetRow.getAttribute('data-id').split(',');
+                try {
+                    for(let i = 0; i < docIds.length; i++) {
+                        const ref = doc(db, "bookings", docIdsArray[i] || docIds[i]);
+                        // Gán toàn bộ giá mới cho document đầu tiên, các doc sau set 0 để tránh cộng dồn sai
+                        if (i === 0) {
+                            await updateDoc(ref, { customerName: newName, price: newPrice });
+                        } else {
+                            await updateDoc(ref, { customerName: newName, price: 0 });
+                        }
+                    }
+                    document.getElementById('editModal').classList.remove('active');
+                    alert("Đã cập nhật thông tin thành công!");
+                } catch(err) { console.error(err); alert("Lỗi kết nối Firebase!"); }
+            }
+            submitBtn.innerHTML = "Lưu Chỉnh Sửa"; submitBtn.disabled = false;
         });
 
         document.getElementById('btnPrint').addEventListener('click', () => {

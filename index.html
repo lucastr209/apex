@@ -8,7 +8,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
     
-    <!-- CSS Bổ sung cho giao diện Lịch Sân Trực Quan (Timeline) -->
     <style>
         .timeline-wrapper { overflow-x: auto; background: var(--card-bg); border-radius: 10px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); margin-top: 15px; }
         .timeline-table { width: 100%; border-collapse: collapse; min-width: 800px; }
@@ -75,7 +74,7 @@
         </header>
 
         <!-- ==============================================
-             TRANG 1: TỔNG QUAN 
+             TRANG 1: TỔNG QUAN
              ============================================== -->
         <div id="page-dashboard" class="page-view active">
             <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
@@ -83,9 +82,13 @@
                     <h1 class="page-title" style="margin-bottom: 5px;">Tổng Quan Thống Kê</h1>
                     <p class="page-subtitle" style="color: var(--success); font-weight: 600; margin: 0;">Đang kết nối Dữ liệu Đám mây (Firebase Real-time)</p>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; background: var(--card-bg); padding: 8px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
-                    <label for="dashboardDateFilter" style="font-weight: 600; color: var(--text-muted); font-size: 0.9rem;"><i class='bx bx-filter-alt'></i> Lọc theo ngày:</label>
-                    <input type="date" id="dashboardDateFilter" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer;">
+                <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 10px; background: var(--card-bg); padding: 8px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.02);">
+                        <label for="dashboardDateFilter" style="font-weight: 600; color: var(--text-muted); font-size: 0.9rem;"><i class='bx bx-filter-alt'></i> Lọc theo ngày:</label>
+                        <input type="date" id="dashboardDateFilter" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer;">
+                    </div>
+                    <!-- NÚT XUẤT EXCEL -->
+                    <button type="button" id="exportCsvBtn" class="btn-primary" style="background: #10b981; border: none; border-radius: 8px; padding: 0 15px; display: flex; align-items: center; gap: 5px;"><i class='bx bx-download'></i> Xuất Excel</button>
                 </div>
             </div>
 
@@ -109,8 +112,8 @@
             </div>
         </div>
 
-<!-- ==============================================
-             TRANG 2: LỊCH SÂN TRỰC QUAN (NÂNG CẤP TIMELINE)
+        <!-- ==============================================
+             TRANG 2, 3, 4
              ============================================== -->
         <div id="page-calendar" class="page-view">
             <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; flex-wrap: wrap; gap: 10px;">
@@ -131,9 +134,6 @@
             </div>
         </div>
 
-        <!-- ==============================================
-             TRANG 3, 4
-             ============================================== -->
         <div id="page-customers" class="page-view">
             <h1 class="page-title">Quản Lý Khách Hàng</h1>
             <p class="page-subtitle" style="margin-bottom: 20px;">Dữ liệu khách hàng được tổng hợp từ trước đến nay.</p>
@@ -160,14 +160,15 @@
         </div>
     </section>
 
-    <!-- MENU 3 CHẤM -->
+    <!-- MENU 3 CHẤM BỔ SUNG NÚT CHỈNH SỬA -->
     <div class="action-menu" id="actionMenu">
         <button type="button" class="menu-item text-success-menu" id="btnPay"><i class='bx bx-money'></i> Xác nhận thanh toán</button>
+        <button type="button" class="menu-item" id="btnEdit" style="color: #3b82f6;"><i class='bx bx-edit'></i> Sửa thông tin</button>
         <button type="button" class="menu-item" id="btnPrint"><i class='bx bx-printer'></i> In hóa đơn cho khách</button>
         <button type="button" class="menu-item text-danger" id="btnDelete"><i class='bx bx-trash'></i> Xóa / Hủy lịch</button>
     </div>
 
-    <!-- KHU VỰC IN HÓA ĐƠN CHI TIẾT -->
+    <!-- KHU VỰC IN HÓA ĐƠN -->
     <div class="receipt-print-area" id="printReceipt">
         <h2>APEX COURT</h2>
         <p>ĐC: 123 Đường Sân Cầu, TP.HCM</p>
@@ -221,7 +222,31 @@
         </div>
     </div>
 
-    <!-- MODAL 2: TẠO YÊU CẦU DỊCH VỤ -->
+    <!-- MODAL CHỈNH SỬA THÔNG TIN -->
+    <div class="modal-overlay" id="editModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Chỉnh Sửa Đơn Đặt</h2>
+                <button type="button" class="close-modal-btn" id="closeEditModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    <div class="form-group">
+                        <label>Tên Khách Hàng</label>
+                        <input type="text" id="editCustomerName" class="modal-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tổng Tiền Cần Thu (VNĐ)</label>
+                        <input type="number" id="editPrice" class="modal-input" required>
+                        <small style="color: var(--text-muted);">Nhập số tiền cuối cùng (Ví dụ: 180000)</small>
+                    </div>
+                    <button type="submit" id="submitEdit" class="btn-primary btn-full-width">Lưu Chỉnh Sửa</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL TẠO YÊU CẦU DỊCH VỤ -->
     <div class="modal-overlay" id="requestModal">
         <div class="modal-container">
             <div class="modal-header">
