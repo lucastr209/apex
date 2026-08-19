@@ -21,19 +21,21 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         const tbody = document.getElementById('bookingTbody');
         const reqList = document.getElementById('requestList');
         const notifBadge = document.getElementById('notificationBadge');
+        
         const dateFilterInput = document.getElementById('dashboardDateFilter');
+        const calendarDateInput = document.getElementById('calendarDateFilter');
         
         let unreadNotifs = 0;
-        let globalRawDocs = []; // Biến lưu trữ toàn bộ dữ liệu gốc để render lại mà không cần gọi Firebase nhiều lần
+        let globalRawDocs = []; 
+        let globalGroupedBookings = {};
 
-        // Thiết lập giá trị mặc định cho ô Date (Là ngày hôm nay)
         const today = new Date();
-        dateFilterInput.value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        dateFilterInput.value = todayStr;
+        calendarDateInput.value = todayStr;
 
-        // Lắng nghe sự kiện đổi ngày
-        dateFilterInput.addEventListener('change', () => {
-            renderDashboard(globalRawDocs);
-        });
+        dateFilterInput.addEventListener('change', () => { renderAllViews(); });
+        calendarDateInput.addEventListener('change', () => { renderTimelineView(); });
 
         function formatMoney(amount) { return amount.toLocaleString('vi-VN') + ' VNĐ'; }
         
@@ -50,7 +52,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             if (!timesArray || timesArray.length === 0) return "Chưa rõ giờ";
             let validTimes = timesArray.filter(t => t && String(t).trim() !== "" && t !== "Giờ tự do");
             if (validTimes.length === 0) return "Giờ tự do";
-
             let range = validTimes.find(t => String(t).includes('-') || String(t).includes('đến'));
             if (range) return range;
 
@@ -64,12 +65,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             });
 
             if (hours.length === 0) return validTimes.join(', ');
-
             hours = [...new Set(hours)].sort((a, b) => a - b);
             let result = [];
             let start = hours[0];
             let prev = hours[0];
-
             for (let i = 1; i < hours.length; i++) {
                 let curr = hours[i];
                 if (curr !== prev + 1) {
@@ -79,51 +78,19 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 prev = curr;
             }
             let endHour = prev + 1;
-            if (endHour > 20) endHour = 21; 
+            if (endHour > 21) endHour = 21; 
             result.push(`${String(start).padStart(2, '0')}:00 - ${String(endHour).padStart(2, '0')}:00`);
             return result.join(" & ");
         }
 
-        function updateDashboardStats() {
-            const rows = document.querySelectorAll('#bookingTbody tr:not(.fade-out)');
-            let totalRevenue = 0;
-            let totalPending = 0;
-            rows.forEach(row => {
-                const status = row.querySelector('.status-badge').innerText.trim();
-                const price = parseInt(row.getAttribute('data-price')) || 0;
-                if (status === "Đã thanh toán") { totalRevenue += price; } 
-                else { totalPending += 1; }
-            });
-            
-            const totalBookings = rows.length;
-            document.getElementById('statTotalBookings').innerText = totalBookings;
-            document.getElementById('statRevenue').innerText = formatMoney(totalRevenue);
-            document.getElementById('statPending').innerText = totalPending;
-            const MAX_DAILY_SLOTS = 64; 
-            document.getElementById('statOccupancy').innerText = (totalBookings > 0 ? Math.min(Math.round((totalBookings / MAX_DAILY_SLOTS) * 100), 100) : 0) + '%';
-        }
-
         // ==============================================
-        // HÀM RENDER DỮ LIỆU ĐƯỢC TÁCH RIÊNG ĐỂ PHỤC VỤ BỘ LỌC
+        // TÁCH LUỒNG XỬ LÝ DỮ LIỆU & GIAO DIỆN
         // ==============================================
-        function renderDashboard(docsArray) {
-            tbody.innerHTML = ""; 
-            document.getElementById('col-san1').innerHTML = ""; document.getElementById('col-san2').innerHTML = "";
-            document.getElementById('col-san3').innerHTML = ""; document.getElementById('col-san4').innerHTML = "";
-
-            if(docsArray.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Chưa có dữ liệu đặt sân.</td></tr>';
-                updateDashboardStats();
-                document.getElementById('customerTbody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Chưa có khách hàng</td></tr>';
-                return;
-            }
-
-            let groupedBookings = {};
+        function parseBookingsData() {
+            globalGroupedBookings = {};
             let customers = {};
-            let selectedDateStr = dateFilterInput.value; // Lấy ngày YYYY-MM-DD từ input
 
-            // 1. Phân tích và gộp dữ liệu
-            docsArray.forEach((firebaseDoc) => {
+            globalRawDocs.forEach((firebaseDoc) => {
                 const data = firebaseDoc.data();
                 const docId = firebaseDoc.id;
 
@@ -160,53 +127,83 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 if (cleanPrice === 0) {
                     let isPremium = String(court).includes('3') || String(court).includes('4') || String(court).toLowerCase().includes('bwf');
                     let isGolden = String(time).match(/17|18|19|20/);
-                    cleanPrice = (isPremium || isGolden) ? 120000 : 80000;
+                    cleanPrice = (isPremium || isGolden) ? 120000 : 90000;
                 }
 
-                // Chuyển đổi createdAt thành định dạng YYYY-MM-DD để dễ lọc
                 let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date()) : new Date();
                 let docDateYMD = createdAtDate.getFullYear() + '-' + String(createdAtDate.getMonth() + 1).padStart(2, '0') + '-' + String(createdAtDate.getDate()).padStart(2, '0');
                 
                 const groupKey = `${cName}_${court}_${status}_${docDateYMD}`;
 
-                if (!groupedBookings[groupKey]) {
-                    groupedBookings[groupKey] = { 
+                // Phân tích ra các con số giờ nguyên thủy để nạp vào Timeline
+                let groupHours = new Set();
+                let str = String(time).toLowerCase();
+                let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
+                if (rangeMatch) {
+                    let s = parseInt(rangeMatch[1]);
+                    let e = parseInt(rangeMatch[2]);
+                    if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) groupHours.add(h); }
+                } else {
+                    let singleMatch = str.match(/(\d{1,2})(?::\d{2}|h|g)/);
+                    if (singleMatch) {
+                        let h = parseInt(singleMatch[1]);
+                        if (h >= 5 && h <= 20) groupHours.add(h);
+                    }
+                }
+
+                if (!globalGroupedBookings[groupKey]) {
+                    globalGroupedBookings[groupKey] = { 
                         docIds: [docId], bookingCode: bCode, customerName: cName, court: court, 
                         totalPrice: cleanPrice, status: status, times: [time],
-                        hasRealPrice: rawPrice > 0,
-                        services: [...extraServices],
-                        dateYMD: docDateYMD // Lưu lại để dùng cho bộ lọc
+                        hasRealPrice: rawPrice > 0, services: [...extraServices], dateYMD: docDateYMD,
+                        parsedHours: Array.from(groupHours)
                     };
                 } else {
-                    groupedBookings[groupKey].docIds.push(docId); 
+                    globalGroupedBookings[groupKey].docIds.push(docId); 
                     if (rawPrice > 0) {
-                        if (!groupedBookings[groupKey].hasRealPrice) {
-                            groupedBookings[groupKey].totalPrice = cleanPrice;
-                            groupedBookings[groupKey].hasRealPrice = true;
-                        } else {
-                            groupedBookings[groupKey].totalPrice += cleanPrice;
-                        }
-                    } else if (!groupedBookings[groupKey].hasRealPrice) {
-                        groupedBookings[groupKey].totalPrice += cleanPrice;
+                        if (!globalGroupedBookings[groupKey].hasRealPrice) {
+                            globalGroupedBookings[groupKey].totalPrice = cleanPrice;
+                            globalGroupedBookings[groupKey].hasRealPrice = true;
+                        } else { globalGroupedBookings[groupKey].totalPrice += cleanPrice; }
+                    } else if (!globalGroupedBookings[groupKey].hasRealPrice) {
+                        globalGroupedBookings[groupKey].totalPrice += cleanPrice;
                     }
-                    if (!groupedBookings[groupKey].times.includes(time)) groupedBookings[groupKey].times.push(time); 
-                    if (extraServices.length > 0) groupedBookings[groupKey].services.push(...extraServices);
+                    if (!globalGroupedBookings[groupKey].times.includes(time)) globalGroupedBookings[groupKey].times.push(time); 
+                    if (extraServices.length > 0) globalGroupedBookings[groupKey].services.push(...extraServices);
+                    Array.from(groupHours).forEach(h => globalGroupedBookings[groupKey].parsedHours.push(h));
+                }
+
+                if(!customers[cName]) customers[cName] = { count: 1, totalSpent: cleanPrice };
+                else {
+                    customers[cName].count += 1;
+                    if (!globalGroupedBookings[groupKey].hasRealPrice) customers[cName].totalSpent += cleanPrice;
                 }
             });
+            
+            // Cập nhật bảng Khách hàng CRM
+            const customerTbody = document.getElementById('customerTbody');
+            customerTbody.innerHTML = "";
+            Object.keys(customers).forEach(key => {
+                const c = customers[key];
+                let rank = c.totalSpent > 1000000 ? "VIP" : "Tiêu chuẩn";
+                let rankColor = c.totalSpent > 1000000 ? "color: var(--warning); font-weight:bold;" : "color: var(--text-muted);";
+                customerTbody.innerHTML += `
+                    <tr>
+                        <td><div class="customer-cell"><div class="avatar-sm bg-blue">${key.charAt(0).toUpperCase()}</div><div class="customer-name">${key}</div></div></td>
+                        <td style="text-align:center;">${c.count} lần</td>
+                        <td class="amount">${formatMoney(c.totalSpent)}</td>
+                        <td style="text-align:center; ${rankColor}">${rank}</td>
+                    </tr>
+                `;
+            });
+        }
 
+        function renderDashboardView() {
+            tbody.innerHTML = ""; 
             let visibleCount = 0;
+            let selectedDateStr = dateFilterInput.value;
 
-            // 2. Render Dữ liệu (Có áp dụng bộ lọc)
-            Object.values(groupedBookings).forEach(group => {
-                // Tính toán thống kê Khách hàng (Áp dụng cho mọi ngày - Không bị ảnh hưởng bởi bộ lọc)
-                if(!customers[group.customerName]) {
-                    customers[group.customerName] = { count: 1, totalSpent: group.totalPrice };
-                } else {
-                    customers[group.customerName].count += 1;
-                    customers[group.customerName].totalSpent += group.totalPrice;
-                }
-
-                // BỘ LỌC NGÀY: Nếu ngày của đơn HỢP LỆ với ô chọn ngày (hoặc ô chọn ngày đang trống), mới in ra bảng
+            Object.values(globalGroupedBookings).forEach(group => {
                 if (group.dateYMD === selectedDateStr || selectedDateStr === "") {
                     visibleCount++;
                     let statusClass = group.status === "Đã thanh toán" ? "status-paid" : "status-pending";
@@ -234,48 +231,120 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                         <td><button type="button" class="icon-action-btn action-dots"><i class='bx bx-dots-vertical-rounded'></i></button></td>
                     `;
                     tbody.appendChild(tr);
-
-                    const courtCard = document.createElement('div');
-                    courtCard.className = 'schedule-slot';
-                    courtCard.innerHTML = `<h4>${group.customerName}</h4><p>${displayTime}</p><p style="margin-top:5px; color:var(--primary-color); font-weight:bold;">${group.status}</p>`;
-                    if (String(group.court).includes('1')) document.getElementById('col-san1').appendChild(courtCard.cloneNode(true));
-                    else if (String(group.court).includes('2')) document.getElementById('col-san2').appendChild(courtCard.cloneNode(true));
-                    else if (String(group.court).includes('3')) document.getElementById('col-san3').appendChild(courtCard.cloneNode(true));
-                    else if (String(group.court).includes('4')) document.getElementById('col-san4').appendChild(courtCard.cloneNode(true));
                 }
             });
 
-            if (visibleCount === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Không có lịch đặt sân nào trong ngày này.</td></tr>';
-            }
-
-            const customerTbody = document.getElementById('customerTbody');
-            customerTbody.innerHTML = "";
-            Object.keys(customers).forEach(key => {
-                const c = customers[key];
-                let rank = c.totalSpent > 1000000 ? "VIP" : "Tiêu chuẩn";
-                let rankColor = c.totalSpent > 1000000 ? "color: var(--warning); font-weight:bold;" : "color: var(--text-muted);";
-                customerTbody.innerHTML += `
-                    <tr>
-                        <td><div class="customer-cell"><div class="avatar-sm bg-blue">${key.charAt(0).toUpperCase()}</div><div class="customer-name">${key}</div></div></td>
-                        <td style="text-align:center;">${c.count} lần</td>
-                        <td class="amount">${formatMoney(c.totalSpent)}</td>
-                        <td style="text-align:center; ${rankColor}">${rank}</td>
-                    </tr>
-                `;
+            if (visibleCount === 0) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Không có lịch đặt sân nào trong ngày này.</td></tr>';
+            
+            // Tính lại thống kê Dashboard
+            let totalRevenue = 0; let totalPending = 0;
+            document.querySelectorAll('#bookingTbody tr:not(.fade-out)').forEach(row => {
+                if(row.querySelector('.status-badge')) {
+                    const status = row.querySelector('.status-badge').innerText.trim();
+                    const price = parseInt(row.getAttribute('data-price')) || 0;
+                    if (status === "Đã thanh toán") totalRevenue += price; else totalPending += 1;
+                }
             });
-            attachMenuEvent(); updateDashboardStats(); 
+            document.getElementById('statTotalBookings').innerText = visibleCount;
+            document.getElementById('statRevenue').innerText = formatMoney(totalRevenue);
+            document.getElementById('statPending').innerText = totalPending;
+            document.getElementById('statOccupancy').innerText = (visibleCount > 0 ? Math.min(Math.round((visibleCount / 64) * 100), 100) : 0) + '%';
+            
+            attachMenuEvent();
         }
 
-        // LẮNG NGHE FIREBASE (CHỈ GỌI 1 LẦN, SAU ĐÓ NHƯỜNG CHO HÀM RENDER)
+        // 🔥 HÀM RENDER GIAO DIỆN TIMELINE MỚI 🔥
+        function renderTimelineView() {
+            const timelineContainer = document.getElementById('timelineContainer');
+            const selectedDate = calendarDateInput.value;
+            const startHour = 5;
+            const endHour = 20;
+
+            // Xây dựng khung xương ma trận Timeline
+            let timelineData = {};
+            for(let h = startHour; h <= endHour; h++) {
+                timelineData[h] = { "1": null, "2": null, "3": null, "4": null };
+            }
+
+            // Đổ dữ liệu vào Ma trận
+            Object.values(globalGroupedBookings).forEach(group => {
+                if (group.dateYMD === selectedDate) {
+                    let cIndex = null;
+                    if (String(group.court).includes('1')) cIndex = "1";
+                    else if (String(group.court).includes('2')) cIndex = "2";
+                    else if (String(group.court).includes('3')) cIndex = "3";
+                    else if (String(group.court).includes('4')) cIndex = "4";
+
+                    if (cIndex) {
+                        group.parsedHours.forEach(h => {
+                            if(timelineData[h]) timelineData[h][cIndex] = group;
+                        });
+                    }
+                }
+            });
+
+            // Vẽ HTML Bảng Timeline
+            let html = `<table class="timeline-table">
+                <thead>
+                    <tr>
+                        <th class="time-col">GIỜ</th>
+                        <th>Sân 1</th>
+                        <th>Sân 2</th>
+                        <th>Sân 3 (BWF)</th>
+                        <th>Sân 4 (BWF)</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            
+            for(let h = startHour; h <= endHour; h++) {
+                html += `<tr><td class="time-col">${String(h).padStart(2, '0')}:00</td>`;
+                ["1", "2", "3", "4"].forEach(c => {
+                    let cellData = timelineData[h][c];
+                    if (cellData) {
+                        let statusClass = cellData.status === "Đã thanh toán" ? "tl-paid" : "tl-pending";
+                        html += `<td class="tl-cell booked ${statusClass}">
+                                    <div class="tl-content">
+                                        <span class="tl-name">${cellData.customerName}</span>
+                                        <span class="tl-status">${cellData.status}</span>
+                                    </div>
+                                 </td>`;
+                    } else {
+                        // Khung giờ trống -> Có thể bấm vào để đặt lịch ngay
+                        html += `<td class="tl-cell free" onclick="openBookingModalWithData('${c}', '${h}')">Trống</td>`;
+                    }
+                });
+                html += `</tr>`;
+            }
+            html += `</tbody></table>`;
+            timelineContainer.innerHTML = html;
+        }
+
+        // Bật Modal khi bấm vào ô trống trong Timeline
+        window.openBookingModalWithData = function(courtNum, hour) {
+            document.getElementById('bookingModal').classList.add('active');
+            document.getElementById('timeSelect').value = `${String(hour).padStart(2, '0')}:00 - ${String(parseInt(hour)+1).padStart(2, '0')}:00`;
+            let courtSelect = document.getElementById('courtSelect');
+            for(let i=0; i<courtSelect.options.length; i++) {
+                if(courtSelect.options[i].text.includes(`Sân ${courtNum}`)) {
+                    courtSelect.selectedIndex = i; break;
+                }
+            }
+        }
+
+        function renderAllViews() {
+            parseBookingsData();
+            renderDashboardView();
+            renderTimelineView();
+        }
+
         onSnapshot(query(bookingsCollection, orderBy("createdAt", "desc")), (snapshot) => {
             globalRawDocs = [];
             snapshot.forEach(doc => globalRawDocs.push(doc));
-            renderDashboard(globalRawDocs);
+            renderAllViews();
         });
 
         // ==============================================
-        // LẮNG NGHE YÊU CẦU & CỘNG TIỀN
+        // LẮNG NGHE YÊU CẦU & CỘNG TIỀN VÀO HÓA ĐƠN
         // ==============================================
         onSnapshot(query(requestsCollection, orderBy("createdAt", "desc")), (snapshot) => {
             reqList.innerHTML = ""; 
