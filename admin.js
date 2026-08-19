@@ -79,7 +79,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 prev = curr;
             }
             let endHour = prev + 1;
-            if (endHour > 21) endHour = 21; 
+            if (endHour > 20) endHour = 21; 
             result.push(`${String(start).padStart(2, '0')}:00 - ${String(endHour).padStart(2, '0')}:00`);
             return result.join(" & ");
         }
@@ -160,7 +160,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 if (cleanPrice === 0) {
                     let isPremium = String(court).includes('3') || String(court).includes('4') || String(court).toLowerCase().includes('bwf');
                     let isGolden = String(time).match(/17|18|19|20/);
-                    cleanPrice = (isPremium || isGolden) ? 120000 : 90000;
+                    cleanPrice = (isPremium || isGolden) ? 120000 : 80000;
                 }
 
                 // Chuyển đổi createdAt thành định dạng YYYY-MM-DD để dễ lọc
