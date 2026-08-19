@@ -738,7 +738,9 @@
             submitBtn.innerHTML = "Ghi Nhận Yêu Cầu"; submitBtn.classList.remove('btn-loading'); submitBtn.disabled = false;
         });
 
-        // UI NAVIGATION
+        // ==============================================
+        // UI NAVIGATION & LOCALSTORAGE (TÍNH NĂNG MỚI)
+        // ==============================================
         const navLinks = document.querySelectorAll('.nav-btn');
         navLinks.forEach(link => {
             link.addEventListener('click', function(e) {
@@ -747,9 +749,23 @@
             });
         });
 
+        // KIỂM TRA LOCALSTORAGE KHI TẢI TRANG ĐỂ GIỮ CHẾ ĐỘ TỐI
+        if (localStorage.getItem('apex_theme') === 'dark') {
+            document.body.classList.add('dark-theme');
+            document.querySelector('#darkModeToggle i').className = 'bx bx-sun';
+        }
+
         document.getElementById('darkModeToggle').addEventListener('click', () => {
             document.body.classList.toggle('dark-theme');
-            document.querySelector('#darkModeToggle i').className = document.body.classList.contains('dark-theme') ? 'bx bx-sun' : 'bx bx-moon';
+            
+            // Lưu lại vào LocalStorage
+            if (document.body.classList.contains('dark-theme')) {
+                document.querySelector('#darkModeToggle i').className = 'bx bx-sun';
+                localStorage.setItem('apex_theme', 'dark');
+            } else {
+                document.querySelector('#darkModeToggle i').className = 'bx bx-moon';
+                localStorage.setItem('apex_theme', 'light');
+            }
         });
 
         const notifBtn = document.getElementById('notificationBtn');
