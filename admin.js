@@ -1,4 +1,34 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+// XỬ LÝ LOGIC ĐĂNG NHẬP (Cửa ải bảo vệ)
+        const ADMIN_PASS = "admin"; // <--- Đổi mật khẩu của bạn tại đây
+        const loginOverlay = document.getElementById('loginOverlay');
+        const loginForm = document.getElementById('loginForm');
+        const passInput = document.getElementById('adminPassword');
+        const loginError = document.getElementById('loginError');
+
+        // Kiểm tra xem đã đăng nhập trước đó chưa
+        if (localStorage.getItem('apex_logged_in') === 'true') {
+            loginOverlay.style.display = 'none';
+        }
+
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (passInput.value === ADMIN_PASS) {
+                localStorage.setItem('apex_logged_in', 'true');
+                loginOverlay.style.opacity = '0';
+                setTimeout(() => { loginOverlay.style.display = 'none'; }, 300);
+            } else {
+                loginError.style.display = 'block';
+                passInput.style.border = '1px solid #ef4444';
+            }
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            localStorage.removeItem('apex_logged_in');
+            location.reload(); // F5 lại web, màn hình đăng nhập sẽ tự động hiện ra
+        });
+
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } 
         from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         import { ENV } from './env.js';
@@ -28,6 +58,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         let unreadNotifs = 0;
         let globalRawDocs = []; 
         let globalGroupedBookings = {};
+        let myRevenueChart = null; 
 
         const today = new Date();
         const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
@@ -214,7 +245,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                     tr.setAttribute('data-court', group.court);
                     tr.setAttribute('data-time', displayTime);
                     tr.setAttribute('data-services', group.services.join('|||'));
-                    tr.setAttribute('data-raw-name', group.customerName); // Giữ tên gốc để edit
+                    tr.setAttribute('data-raw-name', group.customerName); 
 
                     tr.innerHTML = `
                         <td class="booking-id" style="font-size:0.85rem !important;">${group.bookingCode}</td>
@@ -249,6 +280,69 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             document.getElementById('statOccupancy').innerText = (visibleCount > 0 ? Math.min(Math.round((visibleCount / 64) * 100), 100) : 0) + '%';
             
             attachMenuEvent();
+            renderRevenueChart(); 
+        }
+
+        function renderRevenueChart() {
+            const ctx = document.getElementById('revenueChart');
+            if (!ctx) return;
+
+            const labels = [];
+            const dataArray = [0, 0, 0, 0, 0, 0, 0];
+            const dateMap = {}; 
+
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                const ymd = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                const displayDate = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0');
+                labels.push(displayDate);
+                dateMap[ymd] = 6 - i; 
+            }
+
+            Object.values(globalGroupedBookings).forEach(group => {
+                if (group.status === "Đã thanh toán" && dateMap[group.dateYMD] !== undefined) {
+                    dataArray[dateMap[group.dateYMD]] += group.totalPrice;
+                }
+            });
+
+            if (myRevenueChart) {
+                myRevenueChart.data.labels = labels;
+                myRevenueChart.data.datasets[0].data = dataArray;
+                myRevenueChart.update();
+            } else {
+                myRevenueChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Doanh thu (VNĐ)',
+                            data: dataArray,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#10b981',
+                            pointBorderColor: '#ffffff',
+                            pointRadius: 5,
+                            pointHoverRadius: 7
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: function(context) { return context.parsed.y.toLocaleString('vi-VN') + ' VNĐ'; } } }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, ticks: { callback: function(value) { if (value >= 1000000) return (value / 1000000) + ' Tr'; if (value >= 1000) return (value / 1000) + ' K'; return value; } } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+            }
         }
 
         function renderTimelineView() {
@@ -407,10 +501,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         });
 
         // ==============================================
-        // TÍNH NĂNG 1: EXPORT EXCEL (XUẤT BÁO CÁO)
+        // TÍNH NĂNG EXPORT CSV
         // ==============================================
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
-            let csvContent = "\uFEFF"; // Format chuẩn tiếng Việt UTF-8
+            let csvContent = "\uFEFF"; 
             csvContent += "Mã Booking,Khách Hàng,Sân/Giờ,Trạng Thái,Tiền\n";
             
             const rows = document.querySelectorAll('#bookingTbody tr:not(.fade-out)');
@@ -425,7 +519,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 let status = row.querySelector('.status-badge').innerText.trim();
                 let price = row.querySelector('.amount').innerText.replace(/,/g, '').replace(' VNĐ', '').trim();
                 
-                // Đóng gói data bằng ngoặc kép để tránh lỗi dấu phẩy
                 csvContent += `"${code}","${name}","${courtInfo}","${status}","${price}"\n`;
             });
 
@@ -441,7 +534,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         });
 
         // ==============================================
-        // MENU 3 CHẤM, IN HÓA ĐƠN & TÍNH NĂNG 2: EDIT
+        // MENU 3 CHẤM, IN HÓA ĐƠN & EDIT
         // ==============================================
         let targetRow = null; 
         const actionMenu = document.getElementById('actionMenu');
@@ -485,7 +578,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
             actionMenu.classList.remove('active');
         });
 
-        // XỬ LÝ CHỈNH SỬA THÔNG TIN
         document.getElementById('btnEdit').addEventListener('click', () => {
             if(targetRow) {
                 document.getElementById('editCustomerName').value = targetRow.getAttribute('data-raw-name');
@@ -509,8 +601,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 const docIds = targetRow.getAttribute('data-id').split(',');
                 try {
                     for(let i = 0; i < docIds.length; i++) {
-                        const ref = doc(db, "bookings", docIdsArray[i] || docIds[i]);
-                        // Gán toàn bộ giá mới cho document đầu tiên, các doc sau set 0 để tránh cộng dồn sai
+                        const ref = doc(db, "bookings", docIds[i]);
                         if (i === 0) {
                             await updateDoc(ref, { customerName: newName, price: newPrice });
                         } else {

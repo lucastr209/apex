@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
     
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
         .timeline-wrapper { overflow-x: auto; background: var(--card-bg); border-radius: 10px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); margin-top: 15px; }
         .timeline-table { width: 100%; border-collapse: collapse; min-width: 800px; }
@@ -22,9 +24,39 @@
         .tl-content { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 100%; width: 100%; border-radius: 4px; padding: 5px; box-sizing: border-box; }
         .tl-name { font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.8rem; text-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         .tl-status { font-size: 0.7rem; font-weight: 600; background: rgba(0,0,0,0.2); padding: 3px 8px; border-radius: 12px; }
+        
+        .chart-container { background: var(--card-bg); border-radius: 10px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); margin-top: 20px; margin-bottom: 20px; }
+        .chart-title { font-size: 1.1rem; color: var(--text-dark); margin-bottom: 15px; font-weight: 700; }
+
+        /* TÍNH NĂNG MỚI: CSS CHO MÀN HÌNH ĐĂNG NHẬP */
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 99999; display: flex; justify-content: center; align-items: center; transition: opacity 0.3s ease; }
+        .login-box { background: #fff; padding: 40px; border-radius: 15px; width: 90%; max-width: 400px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); text-align: center; }
+        .login-header { margin-bottom: 30px; }
+        .login-header h2 { font-size: 1.8rem; color: #1e293b; margin-top: 15px; font-weight: 800; }
+        .login-header p { color: #64748b; font-size: 0.95rem; margin-top: 5px; }
+        .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; font-weight: 600; }
     </style>
 </head>
 <body>
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP (LOGIN GATE) -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-box">
+            <div class="login-header">
+                <i class='bx bx-stopwatch' style="font-size: 4rem; color: #3b82f6;"></i>
+                <h2>Apex Court</h2>
+                <p>Hệ thống Quản lý Nội bộ</p>
+            </div>
+            <form id="loginForm">
+                <div class="form-group" style="text-align: left;">
+                    <label style="font-weight: 600; color: #475569;">Mật khẩu truy cập</label>
+                    <input type="password" id="adminPassword" class="modal-input" placeholder="Nhập mật khẩu..." required style="margin-top: 8px;">
+                    <div id="loginError" class="error-msg"><i class='bx bx-error-circle'></i> Mật khẩu không chính xác!</div>
+                </div>
+                <button type="submit" class="btn-primary btn-full-width" style="padding: 12px; font-size: 1rem; margin-top: 10px;">Đăng Nhập</button>
+            </form>
+        </div>
+    </div>
 
     <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
@@ -32,11 +64,16 @@
             <i class='bx bx-stopwatch logo-icon' aria-hidden="true"></i>
             <div class="logo-name">Apex Court</div>
         </div>
-        <ul class="nav-links">
+        <ul class="nav-links" style="display: flex; flex-direction: column; height: calc(100% - 140px);">
             <li><a class="nav-btn active" data-target="page-dashboard"><i class='bx bx-grid-alt'></i><div class="link-name">Tổng quan</div></a></li>
             <li><a class="nav-btn" data-target="page-calendar"><i class='bx bx-calendar-check'></i><div class="link-name">Lịch Đặt Sân</div></a></li>
             <li><a class="nav-btn" data-target="page-customers"><i class='bx bx-user-circle'></i><div class="link-name">Khách hàng</div></a></li>
             <li><a class="nav-btn" data-target="page-services"><i class='bx bx-wrench'></i><div class="link-name">Dịch vụ sân</div></a></li>
+            
+            <!-- NÚT ĐĂNG XUẤT -->
+            <li style="margin-top: auto; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 10px;">
+                <a href="#" id="logoutBtn" style="color: #ef4444;"><i class='bx bx-log-out'></i><div class="link-name" style="font-weight: 600;">Đăng xuất</div></a>
+            </li>
         </ul>
         <div class="user-profile">
             <img src="https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=100&q=80" alt="Admin Avatar" class="avatar">
@@ -87,8 +124,7 @@
                         <label for="dashboardDateFilter" style="font-weight: 600; color: var(--text-muted); font-size: 0.9rem;"><i class='bx bx-filter-alt'></i> Lọc theo ngày:</label>
                         <input type="date" id="dashboardDateFilter" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer;">
                     </div>
-                    <!-- NÚT XUẤT CSV CHO GOOGLE SHEETS -->
-<button type="button" id="exportCsvBtn" class="btn-primary" style="background: #0f9d58; border: none; border-radius: 8px; padding: 0 15px; display: flex; align-items: center; gap: 5px;"><i class='bx bx-spreadsheet'></i> Xuất Google Sheets (CSV)</button>
+                    <button type="button" id="exportCsvBtn" class="btn-primary" style="background: #0f9d58; border: none; border-radius: 8px; padding: 0 15px; display: flex; align-items: center; gap: 5px;"><i class='bx bx-spreadsheet'></i> Xuất Google Sheets (CSV)</button>
                 </div>
             </div>
 
@@ -97,6 +133,13 @@
                 <div class="stat-card"><div class="stat-info"><h3 id="statRevenue">0 VNĐ</h3><p>Doanh Thu Thực Tế</p></div><div class="stat-icon icon-green"><i class='bx bx-money'></i></div></div>
                 <div class="stat-card"><div class="stat-info"><h3 id="statOccupancy">0%</h3><p>Tỉ lệ lấp đầy</p></div><div class="stat-icon icon-orange"><i class='bx bx-pie-chart-alt-2'></i></div></div>
                 <div class="stat-card stat-card-revenue"><div class="stat-info"><h3 id="statPending">0</h3><p>Đơn Chưa Thanh Toán</p></div><div class="stat-icon icon-white"><i class='bx bx-time'></i></div></div>
+            </div>
+
+            <div class="chart-container">
+                <h2 class="chart-title"><i class='bx bx-trending-up'></i> Biểu Đồ Doanh Thu Thực Tế (7 Ngày Gần Nhất)</h2>
+                <div style="position: relative; height: 300px; width: 100%;">
+                    <canvas id="revenueChart"></canvas>
+                </div>
             </div>
 
             <div class="table-container">
@@ -160,7 +203,7 @@
         </div>
     </section>
 
-    <!-- MENU 3 CHẤM BỔ SUNG NÚT CHỈNH SỬA -->
+    <!-- MENU 3 CHẤM -->
     <div class="action-menu" id="actionMenu">
         <button type="button" class="menu-item text-success-menu" id="btnPay"><i class='bx bx-money'></i> Xác nhận thanh toán</button>
         <button type="button" class="menu-item" id="btnEdit" style="color: #3b82f6;"><i class='bx bx-edit'></i> Sửa thông tin</button>
