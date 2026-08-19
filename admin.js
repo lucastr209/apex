@@ -155,17 +155,10 @@
                 }
 
                 let cleanPrice = getRawIntegerPrice(rawPrice);
-                if (cleanPrice === 0) {
-                    let isPremium = String(court).includes('3') || String(court).includes('4') || String(court).toLowerCase().includes('bwf');
-                    let isGolden = String(time).match(/17|18|19|20/);
-                    cleanPrice = (isPremium || isGolden) ? 120000 : 90000;
-                }
-
+                
                 let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date()) : new Date();
                 let docDateYMD = createdAtDate.getFullYear() + '-' + String(createdAtDate.getMonth() + 1).padStart(2, '0') + '-' + String(createdAtDate.getDate()).padStart(2, '0');
                 
-                const groupKey = `${cName}_${court}_${status}_${docDateYMD}`;
-
                 let groupHours = new Set();
                 let str = String(time).toLowerCase();
                 let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
@@ -180,6 +173,31 @@
                         if (h >= 5 && h <= 20) groupHours.add(h);
                     }
                 }
+
+                // 🔥 THUẬT TOÁN TÍNH GIÁ ĐỘNG MỚI (ĐỒNG GIÁ 4 SÂN & FLASH SALE) 🔥
+                if (cleanPrice === 0) {
+                    let calculatedBasePrice = 0;
+                    let minHour = 24;
+                    groupHours.forEach(h => {
+                        // >= 17h tính 120k, còn lại 80k
+                        calculatedBasePrice += (h >= 17) ? 120000 : 80000;
+                        if (h < minHour) minHour = h;
+                    });
+
+                    // Kiểm tra Flash Sale (Chỉ áp dụng khi đặt cách giờ chơi từ 30 -> 60 phút)
+                    if (minHour < 24) {
+                        let createdMinutes = createdAtDate.getHours() * 60 + createdAtDate.getMinutes();
+                        let startMinutes = minHour * 60;
+                        let diff = startMinutes - createdMinutes;
+                        
+                        if (diff >= 30 && diff <= 60) {
+                            calculatedBasePrice = calculatedBasePrice * 0.7; // Giảm 30%
+                        }
+                    }
+                    cleanPrice = calculatedBasePrice > 0 ? calculatedBasePrice : 80000;
+                }
+
+                const groupKey = `${cName}_${court}_${status}_${docDateYMD}`;
 
                 if (!globalGroupedBookings[groupKey]) {
                     globalGroupedBookings[groupKey] = { 
@@ -646,7 +664,7 @@
         });
 
         // ==============================================
-        // OFFLINE BOOKING & TẠO YÊU CẦU MỚI
+        // OFFLINE BOOKING & TẠO YÊU CẦU MỚI TÍNH GIÁ ĐỘNG 
         // ==============================================
         document.getElementById('newBookingBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.add('active'));
         document.getElementById('closeBookingModalBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.remove('active'));
@@ -654,16 +672,50 @@
         document.getElementById('bookingForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const name = document.getElementById('customerName').value;
-            const courtVal = document.getElementById('courtSelect').value.split('|');
+            const courtVal = document.getElementById('courtSelect').value; // Đã đổi chỉ lấy tên sân
             const timeSlot = document.getElementById('timeSelect').value;
             const submitBtn = document.getElementById('submitBooking');
 
             submitBtn.innerHTML = "Đang lưu..."; submitBtn.classList.add('btn-loading'); submitBtn.disabled = true;
 
+            // Tự động tính tiền cho Admin (Có kết hợp Flash sale)
+            let hours = [];
+            let match = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/i);
+            if (match) {
+                let s = parseInt(match[1]);
+                let e = parseInt(match[2]);
+                if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) hours.push(h); }
+            } else {
+                let singleMatch = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g)/);
+                if (singleMatch) {
+                    let h = parseInt(singleMatch[1]);
+                    if (h >= 5 && h <= 20) hours.push(h);
+                }
+            }
+
+            let courtPrice = 0;
+            let minHour = 24;
+            hours.forEach(h => {
+                courtPrice += (h >= 17) ? 120000 : 80000;
+                if (h < minHour) minHour = h;
+            });
+
+            const now = new Date();
+            if (minHour < 24) {
+                let currentMins = now.getHours() * 60 + now.getMinutes();
+                let startMins = minHour * 60;
+                let diff = startMins - currentMins;
+                if (diff >= 30 && diff <= 60) {
+                    courtPrice = courtPrice * 0.7; // Giảm 30% nếu đặt sát giờ
+                }
+            }
+
+            if (courtPrice === 0) courtPrice = 80000;
+
             try {
                 await addDoc(bookingsCollection, {
                     bookingCode: '#OFF-' + Math.floor(Math.random() * 9000 + 1000), 
-                    customerName: name + " (Offline)", court: courtVal[0], price: parseInt(courtVal[1]), 
+                    customerName: name + " (Offline)", court: courtVal, price: courtPrice, 
                     status: "Chưa thanh toán", time: timeSlot, createdAt: serverTimestamp(),
                     extraServices: [] 
                 });
@@ -738,9 +790,7 @@
             submitBtn.innerHTML = "Ghi Nhận Yêu Cầu"; submitBtn.classList.remove('btn-loading'); submitBtn.disabled = false;
         });
 
-        // ==============================================
-        // UI NAVIGATION & LOCALSTORAGE (TÍNH NĂNG MỚI)
-        // ==============================================
+        // UI NAVIGATION & LOCALSTORAGE
         const navLinks = document.querySelectorAll('.nav-btn');
         navLinks.forEach(link => {
             link.addEventListener('click', function(e) {
@@ -749,7 +799,6 @@
             });
         });
 
-        // KIỂM TRA LOCALSTORAGE KHI TẢI TRANG ĐỂ GIỮ CHẾ ĐỘ TỐI
         if (localStorage.getItem('apex_theme') === 'dark') {
             document.body.classList.add('dark-theme');
             document.querySelector('#darkModeToggle i').className = 'bx bx-sun';
@@ -757,8 +806,6 @@
 
         document.getElementById('darkModeToggle').addEventListener('click', () => {
             document.body.classList.toggle('dark-theme');
-            
-            // Lưu lại vào LocalStorage
             if (document.body.classList.contains('dark-theme')) {
                 document.querySelector('#darkModeToggle i').className = 'bx bx-sun';
                 localStorage.setItem('apex_theme', 'dark');
