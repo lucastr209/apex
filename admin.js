@@ -21,7 +21,19 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         const tbody = document.getElementById('bookingTbody');
         const reqList = document.getElementById('requestList');
         const notifBadge = document.getElementById('notificationBadge');
+        const dateFilterInput = document.getElementById('dashboardDateFilter');
+        
         let unreadNotifs = 0;
+        let globalRawDocs = []; // Biến lưu trữ toàn bộ dữ liệu gốc để render lại mà không cần gọi Firebase nhiều lần
+
+        // Thiết lập giá trị mặc định cho ô Date (Là ngày hôm nay)
+        const today = new Date();
+        dateFilterInput.value = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+        // Lắng nghe sự kiện đổi ngày
+        dateFilterInput.addEventListener('change', () => {
+            renderDashboard(globalRawDocs);
+        });
 
         function formatMoney(amount) { return amount.toLocaleString('vi-VN') + ' VNĐ'; }
         
@@ -92,23 +104,26 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
         }
 
         // ==============================================
-        // LẮNG NGHE LỊCH ĐẶT SÂN
+        // HÀM RENDER DỮ LIỆU ĐƯỢC TÁCH RIÊNG ĐỂ PHỤC VỤ BỘ LỌC
         // ==============================================
-        onSnapshot(query(bookingsCollection, orderBy("createdAt", "desc")), (snapshot) => {
+        function renderDashboard(docsArray) {
             tbody.innerHTML = ""; 
             document.getElementById('col-san1').innerHTML = ""; document.getElementById('col-san2').innerHTML = "";
             document.getElementById('col-san3').innerHTML = ""; document.getElementById('col-san4').innerHTML = "";
 
-            if(snapshot.empty) {
+            if(docsArray.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Chưa có dữ liệu đặt sân.</td></tr>';
                 updateDashboardStats();
+                document.getElementById('customerTbody').innerHTML = '<tr><td colspan="4" style="text-align:center;">Chưa có khách hàng</td></tr>';
                 return;
             }
 
             let groupedBookings = {};
             let customers = {};
+            let selectedDateStr = dateFilterInput.value; // Lấy ngày YYYY-MM-DD từ input
 
-            snapshot.forEach((firebaseDoc) => {
+            // 1. Phân tích và gộp dữ liệu
+            docsArray.forEach((firebaseDoc) => {
                 const data = firebaseDoc.data();
                 const docId = firebaseDoc.id;
 
@@ -119,7 +134,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 
                 let time = data.timeSlot || data.khungGio || data.thoiGian || data.time || data.gioDat || "Giờ tự do";
                 let rawPrice = data.price || data.totalPrice || data.tongTien || data.amount || data.tien || 0;
-                
                 let extraServices = data.extraServices || [];
 
                 for (let key in data) {
@@ -149,15 +163,19 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                     cleanPrice = (isPremium || isGolden) ? 120000 : 90000;
                 }
 
-                let dateStr = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate().toLocaleDateString() : "Hôm nay") : "Unknown";
-                const groupKey = `${cName}_${court}_${status}_${dateStr}`;
+                // Chuyển đổi createdAt thành định dạng YYYY-MM-DD để dễ lọc
+                let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date()) : new Date();
+                let docDateYMD = createdAtDate.getFullYear() + '-' + String(createdAtDate.getMonth() + 1).padStart(2, '0') + '-' + String(createdAtDate.getDate()).padStart(2, '0');
+                
+                const groupKey = `${cName}_${court}_${status}_${docDateYMD}`;
 
                 if (!groupedBookings[groupKey]) {
                     groupedBookings[groupKey] = { 
                         docIds: [docId], bookingCode: bCode, customerName: cName, court: court, 
                         totalPrice: cleanPrice, status: status, times: [time],
                         hasRealPrice: rawPrice > 0,
-                        services: [...extraServices] 
+                        services: [...extraServices],
+                        dateYMD: docDateYMD // Lưu lại để dùng cho bộ lọc
                     };
                 } else {
                     groupedBookings[groupKey].docIds.push(docId); 
@@ -174,50 +192,62 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                     if (!groupedBookings[groupKey].times.includes(time)) groupedBookings[groupKey].times.push(time); 
                     if (extraServices.length > 0) groupedBookings[groupKey].services.push(...extraServices);
                 }
+            });
 
-                if(!customers[cName]) {
-                    customers[cName] = { count: 1, totalSpent: cleanPrice };
+            let visibleCount = 0;
+
+            // 2. Render Dữ liệu (Có áp dụng bộ lọc)
+            Object.values(groupedBookings).forEach(group => {
+                // Tính toán thống kê Khách hàng (Áp dụng cho mọi ngày - Không bị ảnh hưởng bởi bộ lọc)
+                if(!customers[group.customerName]) {
+                    customers[group.customerName] = { count: 1, totalSpent: group.totalPrice };
                 } else {
-                    customers[cName].count += 1;
-                    if (!groupedBookings[groupKey].hasRealPrice) customers[cName].totalSpent += cleanPrice;
+                    customers[group.customerName].count += 1;
+                    customers[group.customerName].totalSpent += group.totalPrice;
+                }
+
+                // BỘ LỌC NGÀY: Nếu ngày của đơn HỢP LỆ với ô chọn ngày (hoặc ô chọn ngày đang trống), mới in ra bảng
+                if (group.dateYMD === selectedDateStr || selectedDateStr === "") {
+                    visibleCount++;
+                    let statusClass = group.status === "Đã thanh toán" ? "status-paid" : "status-pending";
+                    let statusColor = group.status === "Mới" ? "background-color:#eff6ff; color:#3b82f6;" : "";
+                    let displayTime = formatTimeDisplay(group.times);
+
+                    const tr = document.createElement('tr');
+                    tr.setAttribute('data-id', group.docIds.join(',')); 
+                    tr.setAttribute('data-price', group.totalPrice);
+                    tr.setAttribute('data-court', group.court);
+                    tr.setAttribute('data-time', displayTime);
+                    tr.setAttribute('data-services', group.services.join('|||'));
+
+                    tr.innerHTML = `
+                        <td class="booking-id" style="font-size:0.85rem !important;">${group.bookingCode}</td>
+                        <td>
+                            <div class="customer-cell">
+                                <div class="avatar-sm bg-orange">${group.customerName.charAt(0).toUpperCase()}</div>
+                                <div class="customer-name">${group.customerName}</div>
+                            </div>
+                        </td>
+                        <td><strong>${group.court}</strong><div class="booking-time-muted">${displayTime}</div></td>
+                        <td><div class="status-badge ${statusClass}" style="${statusColor}">${group.status}</div></td>
+                        <td class="amount">${formatMoney(group.totalPrice)}</td>
+                        <td><button type="button" class="icon-action-btn action-dots"><i class='bx bx-dots-vertical-rounded'></i></button></td>
+                    `;
+                    tbody.appendChild(tr);
+
+                    const courtCard = document.createElement('div');
+                    courtCard.className = 'schedule-slot';
+                    courtCard.innerHTML = `<h4>${group.customerName}</h4><p>${displayTime}</p><p style="margin-top:5px; color:var(--primary-color); font-weight:bold;">${group.status}</p>`;
+                    if (String(group.court).includes('1')) document.getElementById('col-san1').appendChild(courtCard.cloneNode(true));
+                    else if (String(group.court).includes('2')) document.getElementById('col-san2').appendChild(courtCard.cloneNode(true));
+                    else if (String(group.court).includes('3')) document.getElementById('col-san3').appendChild(courtCard.cloneNode(true));
+                    else if (String(group.court).includes('4')) document.getElementById('col-san4').appendChild(courtCard.cloneNode(true));
                 }
             });
 
-            Object.values(groupedBookings).forEach(group => {
-                let statusClass = group.status === "Đã thanh toán" ? "status-paid" : "status-pending";
-                let statusColor = group.status === "Mới" ? "background-color:#eff6ff; color:#3b82f6;" : "";
-                let displayTime = formatTimeDisplay(group.times);
-
-                const tr = document.createElement('tr');
-                tr.setAttribute('data-id', group.docIds.join(',')); 
-                tr.setAttribute('data-price', group.totalPrice);
-                tr.setAttribute('data-court', group.court);
-                tr.setAttribute('data-time', displayTime);
-                tr.setAttribute('data-services', group.services.join('|||')); // Đóng gói
-
-                tr.innerHTML = `
-                    <td class="booking-id" style="font-size:0.85rem !important;">${group.bookingCode}</td>
-                    <td>
-                        <div class="customer-cell">
-                            <div class="avatar-sm bg-orange">${group.customerName.charAt(0).toUpperCase()}</div>
-                            <div class="customer-name">${group.customerName}</div>
-                        </div>
-                    </td>
-                    <td><strong>${group.court}</strong><div class="booking-time-muted">${displayTime}</div></td>
-                    <td><div class="status-badge ${statusClass}" style="${statusColor}">${group.status}</div></td>
-                    <td class="amount">${formatMoney(group.totalPrice)}</td>
-                    <td><button type="button" class="icon-action-btn action-dots"><i class='bx bx-dots-vertical-rounded'></i></button></td>
-                `;
-                tbody.appendChild(tr);
-
-                const courtCard = document.createElement('div');
-                courtCard.className = 'schedule-slot';
-                courtCard.innerHTML = `<h4>${group.customerName}</h4><p>${displayTime}</p><p style="margin-top:5px; color:var(--primary-color); font-weight:bold;">${group.status}</p>`;
-                if (String(group.court).includes('1')) document.getElementById('col-san1').appendChild(courtCard.cloneNode(true));
-                else if (String(group.court).includes('2')) document.getElementById('col-san2').appendChild(courtCard.cloneNode(true));
-                else if (String(group.court).includes('3')) document.getElementById('col-san3').appendChild(courtCard.cloneNode(true));
-                else if (String(group.court).includes('4')) document.getElementById('col-san4').appendChild(courtCard.cloneNode(true));
-            });
+            if (visibleCount === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Không có lịch đặt sân nào trong ngày này.</td></tr>';
+            }
 
             const customerTbody = document.getElementById('customerTbody');
             customerTbody.innerHTML = "";
@@ -235,10 +265,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                 `;
             });
             attachMenuEvent(); updateDashboardStats(); 
+        }
+
+        // LẮNG NGHE FIREBASE (CHỈ GỌI 1 LẦN, SAU ĐÓ NHƯỜNG CHO HÀM RENDER)
+        onSnapshot(query(bookingsCollection, orderBy("createdAt", "desc")), (snapshot) => {
+            globalRawDocs = [];
+            snapshot.forEach(doc => globalRawDocs.push(doc));
+            renderDashboard(globalRawDocs);
         });
 
         // ==============================================
-        // LẮNG NGHE YÊU CẦU & CỘNG TIỀN VÀO HÓA ĐƠN
+        // LẮNG NGHE YÊU CẦU & CỘNG TIỀN
         // ==============================================
         onSnapshot(query(requestsCollection, orderBy("createdAt", "desc")), (snapshot) => {
             reqList.innerHTML = ""; 
@@ -274,7 +311,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                                     let newTotalForGroup = currentGroupPrice + data.price;
                                     let serviceDetailStr = `${data.itemName} - ${formatMoney(data.price)}`;
                                     
-                                    // 🔥 SỬ DỤNG JAVASCRIPT THUẦN ĐỂ THÊM VÀO MẢNG MÀ KHÔNG CẦN ARRAYUNION 🔥
                                     let currentServicesStr = targetRowHTML.getAttribute('data-services') || "";
                                     let servicesArr = currentServicesStr ? currentServicesStr.split('|||') : [];
                                     servicesArr.push(serviceDetailStr); 
@@ -285,7 +321,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                                             await updateDoc(ref, { 
                                                 price: newTotalForGroup, 
                                                 status: "Chưa thanh toán",
-                                                extraServices: servicesArr // Ghi đè mảng mới trực tiếp lên Firebase
+                                                extraServices: servicesArr
                                             });
                                         } else {
                                             await updateDoc(ref, { price: 0, status: "Chưa thanh toán" });
@@ -298,10 +334,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebas
                             } else { 
                                 alert("Đã hoàn thành giao cho khách vãng lai. Vui lòng thu tiền mặt."); 
                             }
-                            
-                            // Chỉ xóa yêu cầu sau khi cộng tiền thành công
                             await deleteDoc(doc(db, "requests", docId));
-
                         } catch (error) { 
                             console.error(error); 
                             alert("Lỗi: " + error.message);
