@@ -118,6 +118,7 @@
             return parsedNumber || 0;
         }
 
+        // ĐÃ SỬA GIỚI HẠN GIỜ CHO HÀM formatTimeDisplay 
         function formatTimeDisplay(timesArray) {
             if (!timesArray || timesArray.length === 0) return "Chưa rõ giờ";
             let validTimes = timesArray.filter(t => t && String(t).trim() !== "" && t !== "Giờ tự do");
@@ -131,7 +132,8 @@
                 let match = String(t).match(/^(\d{1,2}):\d{2}/);
                 if (match) {
                     let h = parseInt(match[1]);
-                    if (h >= 5 && h <= 20) hours.push(h); 
+                    // Giới hạn max là 19 để tương ứng 19:00 - 20:00
+                    if (h >= 5 && h <= 19) hours.push(h); 
                 }
             });
 
@@ -150,11 +152,13 @@
                 prev = curr;
             }
             let endHour = prev + 1;
-            if (endHour > 21) endHour = 21; 
+            // Cap giới hạn tối đa là 20:00 cho endHour
+            if (endHour > 20) endHour = 20; 
             result.push(`${String(start).padStart(2, '0')}:00 - ${String(endHour).padStart(2, '0')}:00`);
             return result.join(" & ");
         }
 
+        // ĐÃ SỬA THUẬT TOÁN DEEP PARSER ĐỂ CHẶN GIỜ TỐI ĐA LÀ 19:00
         function parseBookingsData() {
             globalGroupedBookings = {};
             let customers = {};
@@ -239,10 +243,19 @@
                 let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
                 if (rangeMatch) {
                     let s = parseInt(rangeMatch[1]); let e = parseInt(rangeMatch[2]);
-                    if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) groupHours.add(h); }
+                    if (s >= 5 && e > s) { 
+                        for(let h = s; h < e; h++) {
+                            // Giới hạn max giờ bắt đầu là 19
+                            if(h <= 19) groupHours.add(h); 
+                        }
+                    }
                 } else {
                     let singleMatch = str.match(/(\d{1,2})(?::\d{2}|h|g)/);
-                    if (singleMatch) { let h = parseInt(singleMatch[1]); if (h >= 5 && h <= 20) groupHours.add(h); }
+                    if (singleMatch) { 
+                        let h = parseInt(singleMatch[1]); 
+                        // Giới hạn max giờ bắt đầu là 19
+                        if (h >= 5 && h <= 19) groupHours.add(h); 
+                    }
                 }
 
                 if (cleanPrice === 0) {
@@ -418,12 +431,12 @@
             }
         }
 
-        // ĐÃ SỬA: Đổi tiêu đề "GIỜ" thành "Khung giờ" và hiển thị "HH:00 - HH:00"
+        // ĐÃ CHỈNH SỬA: endHour = 19 VÀ THÊM FORMAT CHUỖI HH:00 - HH:00 VÀO BẢNG
         function renderTimelineView() {
             const timelineContainer = document.getElementById('timelineContainer');
             const selectedDate = calendarDateInput.value;
             const startHour = 5;
-            const endHour = 20;
+            const endHour = 19; // Kết thúc bằng mốc 19:00 - 20:00
 
             let timelineData = {};
             for(let h = startHour; h <= endHour; h++) {
@@ -787,14 +800,28 @@
         document.getElementById('newBookingBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.add('active'));
         document.getElementById('closeBookingModalBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.remove('active'));
         
+        // ĐÃ CHỈNH SỬA LOGIC GIỚI HẠN GIỜ CHO HÀM FORM OFFLINE BOOKING
         document.getElementById('bookingForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const submitBtn = document.getElementById('submitBooking'); submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
             let timeSlot = document.getElementById('timeSelect').value;
             let hours = [];
             let match = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/i);
-            if (match) { let s = parseInt(match[1]); let e = parseInt(match[2]); if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) hours.push(h); } } 
-            else { let singleMatch = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g)/); if (singleMatch) { let h = parseInt(singleMatch[1]); if (h >= 5 && h <= 20) hours.push(h); } }
+            if (match) { 
+                let s = parseInt(match[1]); let e = parseInt(match[2]); 
+                if (s >= 5 && e > s) { 
+                    for(let h = s; h < e; h++) {
+                        if (h <= 19) hours.push(h); // Giới hạn max là 19 
+                    }
+                } 
+            } 
+            else { 
+                let singleMatch = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g)/); 
+                if (singleMatch) { 
+                    let h = parseInt(singleMatch[1]); 
+                    if (h >= 5 && h <= 19) hours.push(h); 
+                } 
+            }
             
             let courtPrice = 0; let minHour = 24;
             hours.forEach(h => { courtPrice += (h >= 17) ? 120000 : 80000; if (h < minHour) minHour = h; });
