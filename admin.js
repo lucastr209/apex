@@ -33,7 +33,6 @@
             setTimeout(() => { 
                 loginOverlay.style.display = 'none'; 
                 applyRoleRestrictions(role);
-                // Trigger render again to adjust views based on role
                 renderAllViews();
             }, 300);
         }
@@ -101,7 +100,6 @@
         dateFilterInput.addEventListener('change', () => { renderAllViews(); });
         calendarDateInput.addEventListener('change', () => { renderTimelineView(); });
 
-        // Tự động điền giá tiền khi chọn món lúc nhập kho
         document.getElementById('restockItem').addEventListener('change', function() {
             if(this.value) {
                 document.getElementById('restockCustomItem').value = "";
@@ -157,6 +155,7 @@
             return result.join(" & ");
         }
 
+        // 🔥 THUẬT TOÁN DEEP PARSER NỘI SUY NGÀY THÁNG ĐẶT CỐ ĐỊNH 🔥
         function parseBookingsData() {
             globalGroupedBookings = {};
             let customers = {};
@@ -195,31 +194,63 @@
                 }
 
                 let cleanPrice = getRawIntegerPrice(rawPrice);
-                let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date()) : new Date();
-                let docDateYMD = createdAtDate.getFullYear() + '-' + String(createdAtDate.getMonth() + 1).padStart(2, '0') + '-' + String(createdAtDate.getDate()).padStart(2, '0');
+                let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date();
                 
+                // QUÉT TOÀN BỘ CHUỖI ĐỂ TÌM NGÀY ĐẶT CỐ ĐỊNH (VD: TỪ 21/8/2026 ĐẾN 11/9/2026)
+                let combinedString = String(data.date || "") + " " + String(data.ngayDat || "") + " " + String(data.bookingDate || "") + " " + String(data.ngay_dat || "") + " " + String(data.ngay || "") + " " + String(time) + " " + String(data.timeSlot || "");
+                let dateRegex = /\b(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})\b/g;
+                let matches = [...combinedString.matchAll(dateRegex)];
+                let parsedDates = [];
+                
+                matches.forEach(m => {
+                    let p1 = parseInt(m[1]), p2 = parseInt(m[2]), p3 = parseInt(m[3]), d, mo, y;
+                    if (p1 > 1000) { y = p1; mo = p2; d = p3; } 
+                    else if (p3 > 1000) { d = p1; mo = p2; y = p3; } 
+                    else { return; } 
+                    if (y >= 2020 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                        parsedDates.push(new Date(y, mo - 1, d));
+                    }
+                });
+                parsedDates.sort((a, b) => a.getTime() - b.getTime());
+
+                let validDates = [];
+                if (parsedDates.length >= 2) {
+                    let startDate = parsedDates[0];
+                    let endDate = parsedDates[parsedDates.length - 1];
+                    let currDate = new Date(startDate);
+                    let loopCount = 0; 
+                    while (currDate <= endDate && loopCount < 52) { // Nhân bản mỗi 7 ngày
+                        let y = currDate.getFullYear(), m = String(currDate.getMonth() + 1).padStart(2, '0'), day = String(currDate.getDate()).padStart(2, '0');
+                        validDates.push(`${y}-${m}-${day}`);
+                        currDate.setDate(currDate.getDate() + 7);
+                        loopCount++;
+                    }
+                } else if (parsedDates.length === 1) {
+                    let y = parsedDates[0].getFullYear(), m = String(parsedDates[0].getMonth() + 1).padStart(2, '0'), day = String(parsedDates[0].getDate()).padStart(2, '0');
+                    validDates.push(`${y}-${m}-${day}`);
+                }
+
+                if (validDates.length === 0) {
+                    let y = createdAtDate.getFullYear(), m = String(createdAtDate.getMonth() + 1).padStart(2, '0'), day = String(createdAtDate.getDate()).padStart(2, '0');
+                    validDates.push(`${y}-${m}-${day}`);
+                }
+                validDates = [...new Set(validDates)];
+
+                // TÍNH GIỜ CHO TIMELINE
                 let groupHours = new Set();
                 let str = String(time).toLowerCase();
                 let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
                 if (rangeMatch) {
-                    let s = parseInt(rangeMatch[1]);
-                    let e = parseInt(rangeMatch[2]);
+                    let s = parseInt(rangeMatch[1]); let e = parseInt(rangeMatch[2]);
                     if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) groupHours.add(h); }
                 } else {
                     let singleMatch = str.match(/(\d{1,2})(?::\d{2}|h|g)/);
-                    if (singleMatch) {
-                        let h = parseInt(singleMatch[1]);
-                        if (h >= 5 && h <= 20) groupHours.add(h);
-                    }
+                    if (singleMatch) { let h = parseInt(singleMatch[1]); if (h >= 5 && h <= 20) groupHours.add(h); }
                 }
 
                 if (cleanPrice === 0) {
-                    let calculatedBasePrice = 0;
-                    let minHour = 24;
-                    groupHours.forEach(h => {
-                        calculatedBasePrice += (h >= 17) ? 120000 : 80000;
-                        if (h < minHour) minHour = h;
-                    });
+                    let calculatedBasePrice = 0; let minHour = 24;
+                    groupHours.forEach(h => { calculatedBasePrice += (h >= 17) ? 120000 : 80000; if (h < minHour) minHour = h; });
                     if (minHour < 24) {
                         let createdMinutes = createdAtDate.getHours() * 60 + createdAtDate.getMinutes();
                         let startMinutes = minHour * 60;
@@ -229,13 +260,14 @@
                     cleanPrice = calculatedBasePrice > 0 ? calculatedBasePrice : 80000;
                 }
 
-                const groupKey = `${cName}_${court}_${status}_${docDateYMD}`;
+                const groupKey = `${cName}_${court}_${status}_${validDates.join('_')}`;
 
                 if (!globalGroupedBookings[groupKey]) {
                     globalGroupedBookings[groupKey] = { 
                         docIds: [docId], bookingCode: bCode, customerName: cName, court: court, 
                         totalPrice: cleanPrice, status: status, times: [time],
-                        hasRealPrice: rawPrice > 0, services: [...extraServices], dateYMD: docDateYMD,
+                        hasRealPrice: rawPrice > 0, services: [...extraServices], 
+                        dateYMDs: validDates, // Chứa mảng các ngày lịch lặp lại
                         parsedHours: Array.from(groupHours)
                     };
                 } else {
@@ -283,7 +315,11 @@
             let selectedDateStr = dateFilterInput.value;
 
             Object.values(globalGroupedBookings).forEach(group => {
-                if (group.dateYMD === selectedDateStr || selectedDateStr === "") {
+                let isMatch = false;
+                if (selectedDateStr === "") isMatch = true;
+                else if (group.dateYMDs.includes(selectedDateStr)) isMatch = true;
+
+                if (isMatch) {
                     visibleCount++;
                     let statusClass = group.status === "Đã thanh toán" ? "status-paid" : "status-pending";
                     let statusColor = group.status === "Mới" ? "background-color:#eff6ff; color:#3b82f6;" : "";
@@ -356,8 +392,14 @@
             }
 
             Object.values(globalGroupedBookings).forEach(group => {
-                if (group.status === "Đã thanh toán" && dateMap[group.dateYMD] !== undefined) {
-                    dataArray[dateMap[group.dateYMD]] += group.totalPrice;
+                if (group.status === "Đã thanh toán") {
+                    // Chia đều tổng tiền cho số ngày lặp lại để biểu đồ 7 ngày hiển thị chuẩn xác
+                    let pricePerSession = group.totalPrice / group.dateYMDs.length;
+                    group.dateYMDs.forEach(dStr => {
+                        if (dateMap[dStr] !== undefined) {
+                            dataArray[dateMap[dStr]] += pricePerSession;
+                        }
+                    });
                 }
             });
 
@@ -380,6 +422,7 @@
             }
         }
 
+        // 🔥 THUẬT TOÁN ĐỔ ĐA SÂN VÀO TIMELINE 🔥
         function renderTimelineView() {
             const timelineContainer = document.getElementById('timelineContainer');
             const selectedDate = calendarDateInput.value;
@@ -392,18 +435,20 @@
             }
 
             Object.values(globalGroupedBookings).forEach(group => {
-                if (group.dateYMD === selectedDate) {
-                    let cIndex = null;
-                    if (String(group.court).includes('1')) cIndex = "1";
-                    else if (String(group.court).includes('2')) cIndex = "2";
-                    else if (String(group.court).includes('3')) cIndex = "3";
-                    else if (String(group.court).includes('4')) cIndex = "4";
+                if (group.dateYMDs.includes(selectedDate)) {
+                    let courtsStr = String(group.court);
+                    let cIndices = [];
+                    // Hỗ trợ gộp "Sân 1, Sân 2" khóa cùng lúc trên ma trận
+                    if (courtsStr.includes('1')) cIndices.push("1");
+                    if (courtsStr.includes('2')) cIndices.push("2");
+                    if (courtsStr.includes('3')) cIndices.push("3");
+                    if (courtsStr.includes('4')) cIndices.push("4");
 
-                    if (cIndex) {
+                    cIndices.forEach(cIndex => {
                         group.parsedHours.forEach(h => {
                             if(timelineData[h]) timelineData[h][cIndex] = group;
                         });
-                    }
+                    });
                 }
             });
 
@@ -452,7 +497,7 @@
         });
 
         // ==============================================
-        // TÍNH NĂNG MỚI: QUẢN LÝ KHO HÀNG (CÓ EDIT/DELETE)
+        // QUẢN LÝ KHO HÀNG (CÓ EDIT/DELETE DÀNH CHO ADMIN)
         // ==============================================
         onSnapshot(inventoryCollection, (snapshot) => {
             const inventoryTbody = document.getElementById('inventoryTbody');
@@ -470,7 +515,6 @@
                     let stockColor = data.stock < 5 ? "color: #ef4444; font-weight: bold;" : "color: #10b981; font-weight: bold;";
                     let warningIcon = data.stock < 5 ? "<i class='bx bx-error-circle'></i> " : "";
                     
-                    // Nút hành động chỉ hiển thị HTML, class admin-only sẽ lo việc ẩn/hiện bằng CSS
                     let actionHtml = `
                         <td class="admin-only" style="text-align: center;">
                             <button type="button" class="icon-action-btn edit-inv-btn" data-id="${docId}" data-name="${data.itemName}" data-price="${data.price}" data-stock="${data.stock}" style="color: #3b82f6; background: transparent; border: none; cursor: pointer; font-size: 1.15rem; margin-right: 8px;"><i class='bx bx-edit'></i></button>
@@ -491,7 +535,6 @@
             }
         });
 
-        // GẮN SỰ KIỆN CHO NÚT SỬA VÀ XÓA KHO (CHỈ ADMIN MỚI BẤM ĐƯỢC VÌ STAFF BỊ ẨN)
         function attachInventoryEvents() {
             document.querySelectorAll('.edit-inv-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
@@ -506,18 +549,13 @@
             document.querySelectorAll('.del-inv-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     if (confirm('Xóa món này khỏi kho? Hành động này không thể hoàn tác!')) {
-                        try {
-                            await deleteDoc(doc(db, "inventory", btn.getAttribute('data-id')));
-                        } catch (err) {
-                            console.error(err);
-                            alert('Lỗi kết nối Firebase!');
-                        }
+                        try { await deleteDoc(doc(db, "inventory", btn.getAttribute('data-id'))); } 
+                        catch (err) { console.error(err); alert('Lỗi kết nối Firebase!'); }
                     }
                 });
             });
         }
 
-        // XỬ LÝ LƯU SỬA KHO
         document.getElementById('closeEditInvModalBtn').addEventListener('click', () => { document.getElementById('editInvModal').classList.remove('active'); });
         
         document.getElementById('editInvForm').addEventListener('submit', async (e) => {
@@ -535,9 +573,7 @@
                 await updateDoc(invRef, { itemName: newName, price: newPrice, stock: newStock });
                 document.getElementById('editInvModal').classList.remove('active');
                 alert("Cập nhật kho thành công!");
-            } catch (err) {
-                console.error(err); alert("Lỗi kết nối Firebase!");
-            }
+            } catch (err) { console.error(err); alert("Lỗi kết nối Firebase!"); }
             submitBtn.innerHTML = "Lưu Thay Đổi Kho"; submitBtn.disabled = false;
         });
 

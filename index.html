@@ -39,7 +39,6 @@
         .services-layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
         @media (max-width: 900px) { .services-layout { grid-template-columns: 1fr; } }
 
-        /* BẢO MẬT: Ẩn các tính năng của Admin khi role là staff */
         body.role-staff .admin-only { display: none !important; }
     </style>
 </head>
@@ -56,7 +55,7 @@
             <form id="loginForm">
                 <div class="form-group" style="text-align: left;">
                     <label style="font-weight: 600; color: #475569;">Mật khẩu truy cập</label>
-                    <input type="password" id="adminPassword" class="modal-input" placeholder="Vui lòng nhập mật khẩu" required style="margin-top: 8px;">
+                    <input type="password" id="adminPassword" class="modal-input" placeholder="Nhập: 'admin' hoặc 'staff'" required style="margin-top: 8px;">
                     <div id="loginError" class="error-msg"><i class='bx bx-error-circle'></i> Mật khẩu không chính xác!</div>
                 </div>
                 <button type="submit" class="btn-primary btn-full-width" style="padding: 12px; font-size: 1rem; margin-top: 10px;">Đăng Nhập</button>
@@ -220,7 +219,6 @@
                         <button type="button" class="btn-primary" id="restockBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; border: none;"><i class='bx bx-archive-in'></i> Nhập Kho</button>
                     </div>
                     <div class="table-responsive">
-                        <!-- THÊM CỘT TÙY CHỌN (CHỈ HIỂN THỊ KHI LÀ ADMIN) -->
                         <table class="booking-table" style="width: 100%; font-size: 0.85rem;">
                             <thead><tr><th style="text-align:left;">Món</th><th>Giá Bán</th><th>Tồn</th><th class="admin-only" style="text-align:center;">Tùy Chọn</th></tr></thead>
                             <tbody id="inventoryTbody">
@@ -245,7 +243,7 @@
     <div class="receipt-print-area" id="printReceipt">
         <h2>APEX COURT</h2>
         <p>ĐC: 123 Đường Sân Cầu, TP.HCM</p>
-        <p>Ngày: <span id="rDate"></span></p>
+        <p>Ngày in: <span id="rDate"></span></p>
         <div class="divider"></div>
         <p>Mã HĐ: <span id="rId"></span></p>
         <p>Khách hàng: <span id="rName"></span></p>
@@ -383,7 +381,7 @@
         </div>
     </div>
 
-    <!-- TÍNH NĂNG MỚI: MODAL CHỈNH SỬA KHO (DÀNH CHO ADMIN) -->
+    <!-- MODAL CHỈNH SỬA KHO (DÀNH CHO ADMIN) -->
     <div class="modal-overlay" id="editInvModal">
         <div class="modal-container">
             <div class="modal-header">
