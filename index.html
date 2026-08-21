@@ -38,6 +38,9 @@
 
         .services-layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
         @media (max-width: 900px) { .services-layout { grid-template-columns: 1fr; } }
+
+        /* BẢO MẬT: Ẩn các tính năng của Admin khi role là staff */
+        body.role-staff .admin-only { display: none !important; }
     </style>
 </head>
 <body>
@@ -53,7 +56,7 @@
             <form id="loginForm">
                 <div class="form-group" style="text-align: left;">
                     <label style="font-weight: 600; color: #475569;">Mật khẩu truy cập</label>
-                    <input type="password" id="adminPassword" class="modal-input" placeholder="Vui lòng nhập mật khẩu" required style="margin-top: 8px;">
+                    <input type="password" id="adminPassword" class="modal-input" placeholder="Nhập: 'admin' hoặc 'staff'" required style="margin-top: 8px;">
                     <div id="loginError" class="error-msg"><i class='bx bx-error-circle'></i> Mật khẩu không chính xác!</div>
                 </div>
                 <button type="submit" class="btn-primary btn-full-width" style="padding: 12px; font-size: 1rem; margin-top: 10px;">Đăng Nhập</button>
@@ -126,8 +129,7 @@
                         <label for="dashboardDateFilter" style="font-weight: 600; color: var(--text-muted); font-size: 0.9rem;"><i class='bx bx-filter-alt'></i> Lọc theo ngày:</label>
                         <input type="date" id="dashboardDateFilter" style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer;">
                     </div>
-                    <!-- Nút Xuất CSV sẽ bị ẩn nếu là Nhân viên -->
-                    <button type="button" id="exportCsvBtn" class="btn-primary" style="background: #0f9d58; border: none; border-radius: 8px; padding: 0 15px; display: flex; align-items: center; gap: 5px;"><i class='bx bx-spreadsheet'></i> Xuất Google Sheets (CSV)</button>
+                    <button type="button" id="exportCsvBtn" class="btn-primary admin-only" style="background: #0f9d58; border: none; border-radius: 8px; padding: 0 15px; display: flex; align-items: center; gap: 5px;"><i class='bx bx-spreadsheet'></i> Xuất Google Sheets (CSV)</button>
                 </div>
             </div>
 
@@ -138,8 +140,7 @@
                 <div class="stat-card stat-card-revenue"><div class="stat-info"><h3 id="statPending">0</h3><p>Đơn Chưa Thanh Toán</p></div><div class="stat-icon icon-white"><i class='bx bx-time'></i></div></div>
             </div>
 
-            <!-- Biểu đồ sẽ bị ẩn nếu là Nhân viên -->
-            <div class="chart-container" id="revenueChartContainer">
+            <div class="chart-container admin-only" id="revenueChartContainer">
                 <h2 class="chart-title"><i class='bx bx-trending-up'></i> Biểu Đồ Doanh Thu Thực Tế (7 Ngày Gần Nhất)</h2>
                 <div style="position: relative; height: 300px; width: 100%;">
                     <canvas id="revenueChart"></canvas>
@@ -219,10 +220,11 @@
                         <button type="button" class="btn-primary" id="restockBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; border: none;"><i class='bx bx-archive-in'></i> Nhập Kho</button>
                     </div>
                     <div class="table-responsive">
+                        <!-- THÊM CỘT TÙY CHỌN (CHỈ HIỂN THỊ KHI LÀ ADMIN) -->
                         <table class="booking-table" style="width: 100%; font-size: 0.85rem;">
-                            <thead><tr><th style="text-align:left;">Món</th><th>Giá Bán</th><th>Tồn</th></tr></thead>
+                            <thead><tr><th style="text-align:left;">Món</th><th>Giá Bán</th><th>Tồn</th><th class="admin-only" style="text-align:center;">Tùy Chọn</th></tr></thead>
                             <tbody id="inventoryTbody">
-                                <tr><td colspan="3" style="text-align: center; color: gray;">Đang kết nối kho hàng...</td></tr>
+                                <tr><td colspan="4" style="text-align: center; color: gray;">Đang kết nối kho hàng...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -231,13 +233,12 @@
         </div>
     </section>
 
-    <!-- MENU 3 CHẤM -->
+    <!-- MENU 3 CHẤM BẢNG ĐẶT SÂN -->
     <div class="action-menu" id="actionMenu">
         <button type="button" class="menu-item text-success-menu" id="btnPay"><i class='bx bx-money'></i> Xác nhận thanh toán</button>
-        <!-- Nút sửa và xóa sẽ bị ẩn nếu là Nhân viên -->
-        <button type="button" class="menu-item" id="btnEdit" style="color: #3b82f6;"><i class='bx bx-edit'></i> Sửa thông tin</button>
+        <button type="button" class="menu-item admin-only" id="btnEdit" style="color: #3b82f6;"><i class='bx bx-edit'></i> Sửa thông tin</button>
         <button type="button" class="menu-item" id="btnPrint"><i class='bx bx-printer'></i> In hóa đơn cho khách</button>
-        <button type="button" class="menu-item text-danger" id="btnDelete"><i class='bx bx-trash'></i> Xóa / Hủy lịch</button>
+        <button type="button" class="menu-item text-danger admin-only" id="btnDelete"><i class='bx bx-trash'></i> Xóa / Hủy lịch</button>
     </div>
 
     <!-- KHU VỰC IN HÓA ĐƠN -->
@@ -291,7 +292,7 @@
         </div>
     </div>
 
-    <!-- MODAL CHỈNH SỬA THÔNG TIN -->
+    <!-- MODAL CHỈNH SỬA THÔNG TIN ĐƠN ĐẶT -->
     <div class="modal-overlay" id="editModal">
         <div class="modal-container">
             <div class="modal-header">
@@ -354,8 +355,12 @@
             <div class="modal-body">
                 <form id="restockForm">
                     <div class="form-group">
-                        <label>Chọn Món Cần Nhập</label>
-                        <select id="restockItem" class="modal-input" required>
+                        <label>Tên Món (hoặc chọn dưới)</label>
+                        <input type="text" id="restockCustomItem" class="modal-input" placeholder="Gõ tên món mới (Nước suối, Bò húc...)">
+                    </div>
+                    <div class="form-group">
+                        <select id="restockItem" class="modal-input">
+                            <option value="">-- Hoặc chọn món cũ --</option>
                             <option value="1 chai Revive|15000">1 chai Revive</option>
                             <option value="1 bình trà đá|10000">1 bình trà đá</option>
                             <option value="1 ống cầu Tiến Bộ|200000">1 ống cầu Tiến Bộ</option>
@@ -365,10 +370,42 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Số Lượng Thêm Vào (Ví dụ: 50)</label>
-                        <input type="number" id="restockQty" class="modal-input" required min="1">
+                        <label>Giá Bán (VNĐ)</label>
+                        <input type="number" id="restockPrice" class="modal-input" required placeholder="Ví dụ: 15000">
+                    </div>
+                    <div class="form-group">
+                        <label>Số Lượng Thêm Vào</label>
+                        <input type="number" id="restockQty" class="modal-input" required min="1" placeholder="Ví dụ: 50">
                     </div>
                     <button type="submit" id="submitRestock" class="btn-primary btn-full-width">Xác Nhận Nhập Kho</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- TÍNH NĂNG MỚI: MODAL CHỈNH SỬA KHO (DÀNH CHO ADMIN) -->
+    <div class="modal-overlay" id="editInvModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Sửa Thông Tin Tồn Kho</h2>
+                <button type="button" class="close-modal-btn" id="closeEditInvModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="editInvForm">
+                    <input type="hidden" id="editInvId">
+                    <div class="form-group">
+                        <label>Tên Món</label>
+                        <input type="text" id="editInvName" class="modal-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Giá Bán (VNĐ)</label>
+                        <input type="number" id="editInvPrice" class="modal-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Số Lượng Tồn Kho</label>
+                        <input type="number" id="editInvStock" class="modal-input" required>
+                    </div>
+                    <button type="submit" id="submitEditInv" class="btn-primary btn-full-width">Lưu Thay Đổi Kho</button>
                 </form>
             </div>
         </div>

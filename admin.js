@@ -1,4 +1,5 @@
 // XỬ LÝ LOGIC ĐĂNG NHẬP (Cửa ải bảo vệ)
+        const ADMIN_PASS = "admin";
         const loginOverlay = document.getElementById('loginOverlay');
         const loginForm = document.getElementById('loginForm');
         const passInput = document.getElementById('adminPassword');
@@ -14,7 +15,6 @@
         loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const pass = passInput.value;
-            // Phân loại tài khoản
             if (pass === "admin") {
                 loginSuccess('admin');
             } else if (pass === "staff") {
@@ -33,36 +33,23 @@
             setTimeout(() => { 
                 loginOverlay.style.display = 'none'; 
                 applyRoleRestrictions(role);
+                // Trigger render again to adjust views based on role
+                renderAllViews();
             }, 300);
         }
 
-        // HÀM ÁP DỤNG QUYỀN HẠN
         function applyRoleRestrictions(role) {
             const userName = document.getElementById('userProfileName');
             const userRole = document.getElementById('userProfileRole');
-            const exportBtn = document.getElementById('exportCsvBtn');
-            const chartContainer = document.getElementById('revenueChartContainer');
-            const btnDelete = document.getElementById('btnDelete');
-            const btnEdit = document.getElementById('btnEdit');
 
             if (role === 'staff') {
+                document.body.classList.add('role-staff');
                 if (userName) userName.innerText = "Thu Ngân";
                 if (userRole) userRole.innerText = "Nhân viên trực sân";
-                
-                // Khóa tính năng Admin
-                if (exportBtn) exportBtn.style.display = 'none';
-                if (chartContainer) chartContainer.style.display = 'none';
-                if (btnDelete) btnDelete.style.display = 'none';
-                if (btnEdit) btnEdit.style.display = 'none';
             } else {
+                document.body.classList.remove('role-staff');
                 if (userName) userName.innerText = "Quản lý Phong";
                 if (userRole) userRole.innerText = "Admin Sân";
-                
-                // Mở full tính năng
-                if (exportBtn) exportBtn.style.display = 'flex';
-                if (chartContainer) chartContainer.style.display = 'block';
-                if (btnDelete) btnDelete.style.display = 'block';
-                if (btnEdit) btnEdit.style.display = 'block';
             }
         }
 
@@ -113,6 +100,14 @@
 
         dateFilterInput.addEventListener('change', () => { renderAllViews(); });
         calendarDateInput.addEventListener('change', () => { renderTimelineView(); });
+
+        // Tự động điền giá tiền khi chọn món lúc nhập kho
+        document.getElementById('restockItem').addEventListener('change', function() {
+            if(this.value) {
+                document.getElementById('restockCustomItem').value = "";
+                document.getElementById('restockPrice').value = this.value.split('|')[1];
+            }
+        });
 
         function formatMoney(amount) { return amount.toLocaleString('vi-VN') + ' VNĐ'; }
         
@@ -333,7 +328,6 @@
             document.getElementById('statPending').innerText = totalPending;
             document.getElementById('statOccupancy').innerText = (visibleCount > 0 ? Math.min(Math.round((visibleCount / 64) * 100), 100) : 0) + '%';
             
-            // XỬ LÝ ẨN DOANH THU NẾU LÀ NHÂN VIÊN
             if (currentUserRole === 'staff') {
                 document.getElementById('statRevenue').innerText = "*** VNĐ";
             } else {
@@ -458,7 +452,7 @@
         });
 
         // ==============================================
-        // KHO HÀNG (INVENTORY)
+        // TÍNH NĂNG MỚI: QUẢN LÝ KHO HÀNG (CÓ EDIT/DELETE)
         // ==============================================
         onSnapshot(inventoryCollection, (snapshot) => {
             const inventoryTbody = document.getElementById('inventoryTbody');
@@ -466,24 +460,85 @@
             globalInventory = {};
 
             if(snapshot.empty) {
-                inventoryTbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: gray;">Kho đang trống. Hãy nhập hàng!</td></tr>';
+                inventoryTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: gray;">Kho đang trống. Hãy nhập hàng!</td></tr>`;
             } else {
                 snapshot.forEach(docSnap => {
                     const data = docSnap.data();
-                    globalInventory[data.itemName] = { id: docSnap.id, stock: data.stock, price: data.price };
+                    const docId = docSnap.id;
+                    globalInventory[data.itemName] = { id: docId, stock: data.stock, price: data.price };
                     
                     let stockColor = data.stock < 5 ? "color: #ef4444; font-weight: bold;" : "color: #10b981; font-weight: bold;";
                     let warningIcon = data.stock < 5 ? "<i class='bx bx-error-circle'></i> " : "";
+                    
+                    // Nút hành động chỉ hiển thị HTML, class admin-only sẽ lo việc ẩn/hiện bằng CSS
+                    let actionHtml = `
+                        <td class="admin-only" style="text-align: center;">
+                            <button type="button" class="icon-action-btn edit-inv-btn" data-id="${docId}" data-name="${data.itemName}" data-price="${data.price}" data-stock="${data.stock}" style="color: #3b82f6; background: transparent; border: none; cursor: pointer; font-size: 1.15rem; margin-right: 8px;"><i class='bx bx-edit'></i></button>
+                            <button type="button" class="icon-action-btn del-inv-btn" data-id="${docId}" style="color: #ef4444; background: transparent; border: none; cursor: pointer; font-size: 1.15rem;"><i class='bx bx-trash'></i></button>
+                        </td>
+                    `;
                     
                     inventoryTbody.innerHTML += `
                         <tr>
                             <td style="text-align:left; font-weight:500;">${data.itemName}</td>
                             <td>${formatMoney(data.price)}</td>
                             <td style="${stockColor}">${warningIcon}${data.stock}</td>
+                            ${actionHtml}
                         </tr>
                     `;
                 });
+                attachInventoryEvents();
             }
+        });
+
+        // GẮN SỰ KIỆN CHO NÚT SỬA VÀ XÓA KHO (CHỈ ADMIN MỚI BẤM ĐƯỢC VÌ STAFF BỊ ẨN)
+        function attachInventoryEvents() {
+            document.querySelectorAll('.edit-inv-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.getElementById('editInvId').value = btn.getAttribute('data-id');
+                    document.getElementById('editInvName').value = btn.getAttribute('data-name');
+                    document.getElementById('editInvPrice').value = btn.getAttribute('data-price');
+                    document.getElementById('editInvStock').value = btn.getAttribute('data-stock');
+                    document.getElementById('editInvModal').classList.add('active');
+                });
+            });
+
+            document.querySelectorAll('.del-inv-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (confirm('Xóa món này khỏi kho? Hành động này không thể hoàn tác!')) {
+                        try {
+                            await deleteDoc(doc(db, "inventory", btn.getAttribute('data-id')));
+                        } catch (err) {
+                            console.error(err);
+                            alert('Lỗi kết nối Firebase!');
+                        }
+                    }
+                });
+            });
+        }
+
+        // XỬ LÝ LƯU SỬA KHO
+        document.getElementById('closeEditInvModalBtn').addEventListener('click', () => { document.getElementById('editInvModal').classList.remove('active'); });
+        
+        document.getElementById('editInvForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('submitEditInv');
+            submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
+
+            const id = document.getElementById('editInvId').value;
+            const newName = document.getElementById('editInvName').value;
+            const newPrice = parseInt(document.getElementById('editInvPrice').value);
+            const newStock = parseInt(document.getElementById('editInvStock').value);
+
+            try {
+                const invRef = doc(db, "inventory", id);
+                await updateDoc(invRef, { itemName: newName, price: newPrice, stock: newStock });
+                document.getElementById('editInvModal').classList.remove('active');
+                alert("Cập nhật kho thành công!");
+            } catch (err) {
+                console.error(err); alert("Lỗi kết nối Firebase!");
+            }
+            submitBtn.innerHTML = "Lưu Thay Đổi Kho"; submitBtn.disabled = false;
         });
 
         document.getElementById('restockBtn').addEventListener('click', () => { document.getElementById('restockModal').classList.add('active'); });
@@ -492,19 +547,19 @@
         document.getElementById('restockForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const itemSelect = document.getElementById('restockItem').value;
+            const customItem = document.getElementById('restockCustomItem').value;
+            const price = parseInt(document.getElementById('restockPrice').value);
             const qty = parseInt(document.getElementById('restockQty').value);
             const submitBtn = document.getElementById('submitRestock');
             
             submitBtn.innerHTML = "Đang xử lý..."; submitBtn.disabled = true;
 
-            let parts = itemSelect.split('|');
-            let itemName = parts[0];
-            let price = parseInt(parts[1]);
+            let itemName = customItem.trim() !== "" ? customItem.trim() : (itemSelect ? itemSelect.split('|')[0] : "Không tên");
 
             try {
                 if (globalInventory[itemName]) {
                     const ref = doc(db, "inventory", globalInventory[itemName].id);
-                    await updateDoc(ref, { stock: globalInventory[itemName].stock + qty });
+                    await updateDoc(ref, { stock: globalInventory[itemName].stock + qty, price: price });
                 } else {
                     await addDoc(inventoryCollection, { itemName: itemName, price: price, stock: qty });
                 }
@@ -592,7 +647,7 @@
         });
 
         // ==============================================
-        // TÍNH NĂNG EXPORT CSV
+        // CÁC TÍNH NĂNG CÒN LẠI
         // ==============================================
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
             let csvContent = "\uFEFFMã Booking,Khách Hàng,Sân/Giờ,Trạng Thái,Tiền\n";
