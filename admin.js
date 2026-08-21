@@ -118,7 +118,7 @@
             return parsedNumber || 0;
         }
 
-        // ĐÃ SỬA GIỚI HẠN GIỜ CHO HÀM formatTimeDisplay 
+        // FORMAT TIME HIỂN THỊ CHUẨN TỪ 05:00 ĐẾN 20:00 (GIỚI HẠN HIỂN THỊ TRÊN BẢNG)
         function formatTimeDisplay(timesArray) {
             if (!timesArray || timesArray.length === 0) return "Chưa rõ giờ";
             let validTimes = timesArray.filter(t => t && String(t).trim() !== "" && t !== "Giờ tự do");
@@ -132,7 +132,6 @@
                 let match = String(t).match(/^(\d{1,2}):\d{2}/);
                 if (match) {
                     let h = parseInt(match[1]);
-                    // Giới hạn max là 19 để tương ứng 19:00 - 20:00
                     if (h >= 5 && h <= 19) hours.push(h); 
                 }
             });
@@ -152,13 +151,12 @@
                 prev = curr;
             }
             let endHour = prev + 1;
-            // Cap giới hạn tối đa là 20:00 cho endHour
             if (endHour > 20) endHour = 20; 
             result.push(`${String(start).padStart(2, '0')}:00 - ${String(endHour).padStart(2, '0')}:00`);
             return result.join(" & ");
         }
 
-        // ĐÃ SỬA THUẬT TOÁN DEEP PARSER ĐỂ CHẶN GIỜ TỐI ĐA LÀ 19:00
+        // 🔥 THUẬT TOÁN DEEP PARSER NỘI SUY (ĐÃ SỬA GROUP LẠI ĐỂ TRÁNH SO LE) 🔥
         function parseBookingsData() {
             globalGroupedBookings = {};
             let customers = {};
@@ -240,22 +238,26 @@
 
                 let groupHours = new Set();
                 let str = String(time).toLowerCase();
-                let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
-                if (rangeMatch) {
-                    let s = parseInt(rangeMatch[1]); let e = parseInt(rangeMatch[2]);
-                    if (s >= 5 && e > s) { 
-                        for(let h = s; h < e; h++) {
-                            // Giới hạn max giờ bắt đầu là 19
-                            if(h <= 19) groupHours.add(h); 
+                
+                // Thuật toán /g đảm bảo quét ra mọi mảng giờ (Ví dụ: 18:00 - 19:00, 19:00 - 20:00)
+                let rangeRegex = /(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/g;
+                let rMatches = [...str.matchAll(rangeRegex)];
+                if (rMatches.length > 0) {
+                    rMatches.forEach(m => {
+                        let s = parseInt(m[1]); let e = parseInt(m[2]);
+                        if (s >= 5 && e > s) { 
+                            for(let h = s; h < e; h++) {
+                                if (h <= 19) groupHours.add(h); 
+                            }
                         }
-                    }
+                    });
                 } else {
-                    let singleMatch = str.match(/(\d{1,2})(?::\d{2}|h|g)/);
-                    if (singleMatch) { 
-                        let h = parseInt(singleMatch[1]); 
-                        // Giới hạn max giờ bắt đầu là 19
-                        if (h >= 5 && h <= 19) groupHours.add(h); 
-                    }
+                    let singleRegex = /(\d{1,2})(?::\d{2}|h|g)/g;
+                    let sMatches = [...str.matchAll(singleRegex)];
+                    sMatches.forEach(m => {
+                        let h = parseInt(m[1]);
+                        if (h >= 5 && h <= 19) groupHours.add(h);
+                    });
                 }
 
                 if (cleanPrice === 0) {
@@ -270,7 +272,8 @@
                     cleanPrice = calculatedBasePrice > 0 ? calculatedBasePrice : 80000;
                 }
 
-                const groupKey = `${cName}_${court}_${status}_${validDates.join('_')}`;
+                // GỘP NHÓM THÔNG MINH BẰNG MÃ BOOKING HOẶC TÊN KHÁCH (Loại bỏ thuộc tính "court" khỏi Key để dồn chung khối)
+                const groupKey = `${bCode}_${cName}_${validDates.join('_')}`;
 
                 if (!globalGroupedBookings[groupKey]) {
                     globalGroupedBookings[groupKey] = { 
@@ -282,6 +285,12 @@
                     };
                 } else {
                     globalGroupedBookings[groupKey].docIds.push(docId); 
+                    
+                    // Nối thêm Sân nếu chưa có
+                    if (!globalGroupedBookings[groupKey].court.includes(court)) {
+                        globalGroupedBookings[groupKey].court += ", " + court;
+                    }
+
                     if (rawPrice > 0) {
                         if (!globalGroupedBookings[groupKey].hasRealPrice) {
                             globalGroupedBookings[groupKey].totalPrice = cleanPrice;
@@ -290,9 +299,20 @@
                     } else if (!globalGroupedBookings[groupKey].hasRealPrice) {
                         globalGroupedBookings[groupKey].totalPrice += cleanPrice;
                     }
-                    if (!globalGroupedBookings[groupKey].times.includes(time)) globalGroupedBookings[groupKey].times.push(time); 
-                    if (extraServices.length > 0) globalGroupedBookings[groupKey].services.push(...extraServices);
-                    Array.from(groupHours).forEach(h => globalGroupedBookings[groupKey].parsedHours.push(h));
+                    
+                    if (!globalGroupedBookings[groupKey].times.includes(time)) {
+                        globalGroupedBookings[groupKey].times.push(time); 
+                    }
+                    if (extraServices.length > 0) {
+                        globalGroupedBookings[groupKey].services.push(...extraServices);
+                    }
+                    
+                    // Hợp nhất các Khung giờ
+                    Array.from(groupHours).forEach(h => {
+                        if (!globalGroupedBookings[groupKey].parsedHours.includes(h)) {
+                            globalGroupedBookings[groupKey].parsedHours.push(h);
+                        }
+                    });
                 }
 
                 if(!customers[cName]) customers[cName] = { count: 1, totalSpent: cleanPrice };
@@ -431,7 +451,6 @@
             }
         }
 
-        // ĐÃ CHỈNH SỬA: endHour = 19 VÀ THÊM FORMAT CHUỖI HH:00 - HH:00 VÀO BẢNG
         function renderTimelineView() {
             const timelineContainer = document.getElementById('timelineContainer');
             const selectedDate = calendarDateInput.value;
@@ -800,7 +819,6 @@
         document.getElementById('newBookingBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.add('active'));
         document.getElementById('closeBookingModalBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.remove('active'));
         
-        // ĐÃ CHỈNH SỬA LOGIC GIỚI HẠN GIỜ CHO HÀM FORM OFFLINE BOOKING
         document.getElementById('bookingForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const submitBtn = document.getElementById('submitBooking'); submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
@@ -811,7 +829,7 @@
                 let s = parseInt(match[1]); let e = parseInt(match[2]); 
                 if (s >= 5 && e > s) { 
                     for(let h = s; h < e; h++) {
-                        if (h <= 19) hours.push(h); // Giới hạn max là 19 
+                        if (h <= 19) hours.push(h); 
                     }
                 } 
             } 
