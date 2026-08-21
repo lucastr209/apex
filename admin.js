@@ -155,7 +155,6 @@
             return result.join(" & ");
         }
 
-        // 🔥 THUẬT TOÁN DEEP PARSER NỘI SUY NGÀY THÁNG ĐẶT CỐ ĐỊNH 🔥
         function parseBookingsData() {
             globalGroupedBookings = {};
             let customers = {};
@@ -196,7 +195,6 @@
                 let cleanPrice = getRawIntegerPrice(rawPrice);
                 let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date();
                 
-                // QUÉT TOÀN BỘ CHUỖI ĐỂ TÌM NGÀY ĐẶT CỐ ĐỊNH (VD: TỪ 21/8/2026 ĐẾN 11/9/2026)
                 let combinedString = String(data.date || "") + " " + String(data.ngayDat || "") + " " + String(data.bookingDate || "") + " " + String(data.ngay_dat || "") + " " + String(data.ngay || "") + " " + String(time) + " " + String(data.timeSlot || "");
                 let dateRegex = /\b(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})\b/g;
                 let matches = [...combinedString.matchAll(dateRegex)];
@@ -219,7 +217,7 @@
                     let endDate = parsedDates[parsedDates.length - 1];
                     let currDate = new Date(startDate);
                     let loopCount = 0; 
-                    while (currDate <= endDate && loopCount < 52) { // Nhân bản mỗi 7 ngày
+                    while (currDate <= endDate && loopCount < 52) { 
                         let y = currDate.getFullYear(), m = String(currDate.getMonth() + 1).padStart(2, '0'), day = String(currDate.getDate()).padStart(2, '0');
                         validDates.push(`${y}-${m}-${day}`);
                         currDate.setDate(currDate.getDate() + 7);
@@ -236,7 +234,6 @@
                 }
                 validDates = [...new Set(validDates)];
 
-                // TÍNH GIỜ CHO TIMELINE
                 let groupHours = new Set();
                 let str = String(time).toLowerCase();
                 let rangeMatch = str.match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/);
@@ -267,7 +264,7 @@
                         docIds: [docId], bookingCode: bCode, customerName: cName, court: court, 
                         totalPrice: cleanPrice, status: status, times: [time],
                         hasRealPrice: rawPrice > 0, services: [...extraServices], 
-                        dateYMDs: validDates, // Chứa mảng các ngày lịch lặp lại
+                        dateYMDs: validDates, 
                         parsedHours: Array.from(groupHours)
                     };
                 } else {
@@ -393,7 +390,6 @@
 
             Object.values(globalGroupedBookings).forEach(group => {
                 if (group.status === "Đã thanh toán") {
-                    // Chia đều tổng tiền cho số ngày lặp lại để biểu đồ 7 ngày hiển thị chuẩn xác
                     let pricePerSession = group.totalPrice / group.dateYMDs.length;
                     group.dateYMDs.forEach(dStr => {
                         if (dateMap[dStr] !== undefined) {
@@ -422,7 +418,7 @@
             }
         }
 
-        // 🔥 THUẬT TOÁN ĐỔ ĐA SÂN VÀO TIMELINE 🔥
+        // ĐÃ SỬA: Đổi tiêu đề "GIỜ" thành "Khung giờ" và hiển thị "HH:00 - HH:00"
         function renderTimelineView() {
             const timelineContainer = document.getElementById('timelineContainer');
             const selectedDate = calendarDateInput.value;
@@ -438,7 +434,6 @@
                 if (group.dateYMDs.includes(selectedDate)) {
                     let courtsStr = String(group.court);
                     let cIndices = [];
-                    // Hỗ trợ gộp "Sân 1, Sân 2" khóa cùng lúc trên ma trận
                     if (courtsStr.includes('1')) cIndices.push("1");
                     if (courtsStr.includes('2')) cIndices.push("2");
                     if (courtsStr.includes('3')) cIndices.push("3");
@@ -454,12 +449,13 @@
 
             let html = `<table class="timeline-table">
                 <thead>
-                    <tr><th class="time-col">GIỜ</th><th>Sân 1</th><th>Sân 2</th><th>Sân 3 (BWF)</th><th>Sân 4 (BWF)</th></tr>
+                    <tr><th class="time-col">Khung giờ</th><th>Sân 1</th><th>Sân 2</th><th>Sân 3 (BWF)</th><th>Sân 4 (BWF)</th></tr>
                 </thead>
                 <tbody>`;
             
             for(let h = startHour; h <= endHour; h++) {
-                html += `<tr><td class="time-col">${String(h).padStart(2, '0')}:00</td>`;
+                let nextH = h + 1;
+                html += `<tr><td class="time-col">${String(h).padStart(2, '0')}:00 - ${String(nextH).padStart(2, '0')}:00</td>`;
                 ["1", "2", "3", "4"].forEach(c => {
                     let cellData = timelineData[h][c];
                     if (cellData) {
