@@ -1,29 +1,75 @@
 // XỬ LÝ LOGIC ĐĂNG NHẬP (Cửa ải bảo vệ)
-        const ADMIN_PASS = "admin";
         const loginOverlay = document.getElementById('loginOverlay');
         const loginForm = document.getElementById('loginForm');
         const passInput = document.getElementById('adminPassword');
         const loginError = document.getElementById('loginError');
 
+        let currentUserRole = localStorage.getItem('apex_role') || 'staff'; 
+
         if (localStorage.getItem('apex_logged_in') === 'true') {
             loginOverlay.style.display = 'none';
+            applyRoleRestrictions(currentUserRole);
         }
 
         loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (passInput.value === ADMIN_PASS) {
-                localStorage.setItem('apex_logged_in', 'true');
-                loginOverlay.style.opacity = '0';
-                setTimeout(() => { loginOverlay.style.display = 'none'; }, 300);
+            const pass = passInput.value;
+            // Phân loại tài khoản
+            if (pass === "admin") {
+                loginSuccess('admin');
+            } else if (pass === "staff") {
+                loginSuccess('staff');
             } else {
                 loginError.style.display = 'block';
                 passInput.style.border = '1px solid #ef4444';
             }
         });
 
+        function loginSuccess(role) {
+            localStorage.setItem('apex_logged_in', 'true');
+            localStorage.setItem('apex_role', role);
+            currentUserRole = role;
+            loginOverlay.style.opacity = '0';
+            setTimeout(() => { 
+                loginOverlay.style.display = 'none'; 
+                applyRoleRestrictions(role);
+            }, 300);
+        }
+
+        // HÀM ÁP DỤNG QUYỀN HẠN
+        function applyRoleRestrictions(role) {
+            const userName = document.getElementById('userProfileName');
+            const userRole = document.getElementById('userProfileRole');
+            const exportBtn = document.getElementById('exportCsvBtn');
+            const chartContainer = document.getElementById('revenueChartContainer');
+            const btnDelete = document.getElementById('btnDelete');
+            const btnEdit = document.getElementById('btnEdit');
+
+            if (role === 'staff') {
+                if (userName) userName.innerText = "Thu Ngân";
+                if (userRole) userRole.innerText = "Nhân viên trực sân";
+                
+                // Khóa tính năng Admin
+                if (exportBtn) exportBtn.style.display = 'none';
+                if (chartContainer) chartContainer.style.display = 'none';
+                if (btnDelete) btnDelete.style.display = 'none';
+                if (btnEdit) btnEdit.style.display = 'none';
+            } else {
+                if (userName) userName.innerText = "Quản lý Phong";
+                if (userRole) userRole.innerText = "Admin Sân";
+                
+                // Mở full tính năng
+                if (exportBtn) exportBtn.style.display = 'flex';
+                if (chartContainer) chartContainer.style.display = 'block';
+                if (btnDelete) btnDelete.style.display = 'block';
+                if (btnEdit) btnEdit.style.display = 'block';
+            }
+        }
+
         document.getElementById('logoutBtn').addEventListener('click', (e) => {
             e.preventDefault();
             localStorage.removeItem('apex_logged_in');
+            localStorage.removeItem('apex_role');
             location.reload(); 
         });
 
@@ -46,7 +92,7 @@
         const db = getFirestore(app);
         const bookingsCollection = collection(db, "bookings");
         const requestsCollection = collection(db, "requests");
-        const inventoryCollection = collection(db, "inventory"); // KHỞI TẠO BỘ NHỚ KHO HÀNG
+        const inventoryCollection = collection(db, "inventory"); 
 
         const tbody = document.getElementById('bookingTbody');
         const reqList = document.getElementById('requestList');
@@ -58,7 +104,7 @@
         let globalRawDocs = []; 
         let globalGroupedBookings = {};
         let myRevenueChart = null; 
-        let globalInventory = {}; // Biến lưu tạm kho hàng để check số lượng
+        let globalInventory = {}; 
 
         const today = new Date();
         const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
@@ -284,12 +330,18 @@
                 }
             });
             document.getElementById('statTotalBookings').innerText = visibleCount;
-            document.getElementById('statRevenue').innerText = formatMoney(totalRevenue);
             document.getElementById('statPending').innerText = totalPending;
             document.getElementById('statOccupancy').innerText = (visibleCount > 0 ? Math.min(Math.round((visibleCount / 64) * 100), 100) : 0) + '%';
             
+            // XỬ LÝ ẨN DOANH THU NẾU LÀ NHÂN VIÊN
+            if (currentUserRole === 'staff') {
+                document.getElementById('statRevenue').innerText = "*** VNĐ";
+            } else {
+                document.getElementById('statRevenue').innerText = formatMoney(totalRevenue);
+            }
+            
             attachMenuEvent();
-            renderRevenueChart(); 
+            if(currentUserRole === 'admin') renderRevenueChart(); 
         }
 
         function renderRevenueChart() {
@@ -406,7 +458,7 @@
         });
 
         // ==============================================
-        // LẮNG NGHE KHO HÀNG (INVENTORY) - TÍNH NĂNG MỚI
+        // KHO HÀNG (INVENTORY)
         // ==============================================
         onSnapshot(inventoryCollection, (snapshot) => {
             const inventoryTbody = document.getElementById('inventoryTbody');
@@ -434,7 +486,6 @@
             }
         });
 
-        // XỬ LÝ NÚT NHẬP KHO
         document.getElementById('restockBtn').addEventListener('click', () => { document.getElementById('restockModal').classList.add('active'); });
         document.getElementById('closeRestockModalBtn').addEventListener('click', () => { document.getElementById('restockModal').classList.remove('active'); });
         
@@ -490,7 +541,6 @@
                 div.addEventListener('click', async () => {
                     if(confirm("Xác nhận Đã Giao và tính tiền vào hóa đơn khách hàng này?")) {
                         try {
-                            // 1. TỰ ĐỘNG TRỪ KHO (TÍNH NĂNG MỚI)
                             if(globalInventory[data.itemName]) {
                                 const invRef = doc(db, "inventory", globalInventory[data.itemName].id);
                                 let newStock = globalInventory[data.itemName].stock - 1;
@@ -501,7 +551,6 @@
                                 }
                             }
 
-                            // 2. CỘNG TIỀN VÀO BILL NHƯ CŨ
                             if(data.bookingId && data.bookingId !== "vang-lai") {
                                 const allRows = document.querySelectorAll('#bookingTbody tr');
                                 let targetRowHTML = null;
@@ -532,7 +581,6 @@
                                 } else { alert("Lỗi: Không tìm thấy hóa đơn của khách trên bảng!"); }
                             } else { alert("Đã hoàn thành giao cho khách vãng lai. Vui lòng thu tiền mặt."); }
                             
-                            // 3. XÓA YÊU CẦU KHỎI DANH SÁCH CHỜ
                             await deleteDoc(doc(db, "requests", docId));
                         } catch (error) { 
                             console.error(error); alert("Lỗi: " + error.message);
@@ -544,7 +592,7 @@
         });
 
         // ==============================================
-        // CÁC TÍNH NĂNG CÒN LẠI (GIỮ NGUYÊN)
+        // TÍNH NĂNG EXPORT CSV
         // ==============================================
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
             let csvContent = "\uFEFFMã Booking,Khách Hàng,Sân/Giờ,Trạng Thái,Tiền\n";
