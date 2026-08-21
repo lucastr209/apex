@@ -118,7 +118,6 @@
             return parsedNumber || 0;
         }
 
-        // FORMAT TIME HIỂN THỊ CHUẨN TỪ 05:00 ĐẾN 20:00 (GIỚI HẠN HIỂN THỊ TRÊN BẢNG)
         function formatTimeDisplay(timesArray) {
             if (!timesArray || timesArray.length === 0) return "Chưa rõ giờ";
             let validTimes = timesArray.filter(t => t && String(t).trim() !== "" && t !== "Giờ tự do");
@@ -156,7 +155,86 @@
             return result.join(" & ");
         }
 
-        // 🔥 THUẬT TOÁN DEEP PARSER NỘI SUY (ĐÃ SỬA GROUP LẠI ĐỂ TRÁNH SO LE) 🔥
+        // ==============================================
+        // BỘ HÀM HELPER ĐỌC GIỜ VÀ NGÀY THÁNG ĐỘC LẬP (BULLETPROOF)
+        // ==============================================
+        function getParsedHours(timeStr) {
+            let hours = new Set();
+            let str = String(timeStr).toLowerCase();
+            // Regex siêu mạnh để bắt mọi thể loại: "18:00 - 20:00", "18h đến 20h", "18g-20g"
+            let rangeRegex = /(\d{1,2})\s*(?::\d{2}|h|g|giờ).*?(?:-|đến|den|to).*?(\d{1,2})\s*(?::\d{2}|h|g|giờ)/g;
+            let rMatches = [...str.matchAll(rangeRegex)];
+            
+            if (rMatches.length > 0) {
+                rMatches.forEach(m => {
+                    let s = parseInt(m[1]); 
+                    let e = parseInt(m[2]);
+                    if (s >= 5 && e > s) { 
+                        for(let h = s; h < e; h++) { 
+                            if (h <= 19) hours.add(h); 
+                        }
+                    }
+                });
+            } else {
+                let singleRegex = /(\d{1,2})\s*(?::\d{2}|h|g|giờ)/g;
+                let sMatches = [...str.matchAll(singleRegex)];
+                sMatches.forEach(m => {
+                    let h = parseInt(m[1]);
+                    if (h >= 5 && h <= 19) hours.add(h);
+                });
+            }
+            return Array.from(hours);
+        }
+
+        function getValidDates(data) {
+            let dateStr = String(data.date || data.ngayDat || data.bookingDate || data.ngay_dat || data.ngay || "");
+            let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date();
+            
+            // Regex bắt ngày định dạng dd/mm/yyyy hoặc yyyy/mm/dd (cả dấu - và /)
+            let dateRegex = /\b(\d{1,4})\s*[\/\-]\s*(\d{1,2})\s*[\/\-]\s*(\d{1,4})\b/g;
+            let matches = [...dateStr.matchAll(dateRegex)];
+            let parsedDates = [];
+            
+            matches.forEach(m => {
+                let p1 = parseInt(m[1]), p2 = parseInt(m[2]), p3 = parseInt(m[3]), d, mo, y;
+                if (p1 > 1000) { y = p1; mo = p2; d = p3; } 
+                else if (p3 > 1000) { d = p1; mo = p2; y = p3; } 
+                else return; 
+                if (y >= 2020 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                    parsedDates.push(new Date(y, mo - 1, d));
+                }
+            });
+            parsedDates.sort((a, b) => a.getTime() - b.getTime());
+
+            let validDates = [];
+            if (parsedDates.length >= 2) {
+                let startDate = parsedDates[0];
+                let endDate = parsedDates[parsedDates.length - 1];
+                let currDate = new Date(startDate);
+                let loopCount = 0; 
+                while (currDate <= endDate && loopCount < 52) { // Nhân bản tối đa 1 năm
+                    let y = currDate.getFullYear(), m = String(currDate.getMonth() + 1).padStart(2, '0'), day = String(currDate.getDate()).padStart(2, '0');
+                    validDates.push(`${y}-${m}-${day}`);
+                    currDate.setDate(currDate.getDate() + 7);
+                    loopCount++;
+                }
+            } else if (parsedDates.length === 1) {
+                let y = parsedDates[0].getFullYear(), m = String(parsedDates[0].getMonth() + 1).padStart(2, '0'), day = String(parsedDates[0].getDate()).padStart(2, '0');
+                validDates.push(`${y}-${m}-${day}`);
+            }
+
+            // Nếu không quét được chuỗi ngày tháng nào, lấy ngày tạo đơn (createdAt) làm chuẩn
+            if (validDates.length === 0) {
+                let y = createdAtDate.getFullYear(), m = String(createdAtDate.getMonth() + 1).padStart(2, '0'), day = String(createdAtDate.getDate()).padStart(2, '0');
+                validDates.push(`${y}-${m}-${day}`);
+            }
+            return [...new Set(validDates)];
+        }
+
+
+        // ==============================================
+        // KHỐI CODE TÍNH TIỀN & NHÓM BẢNG ĐIỀU KHIỂN
+        // ==============================================
         function parseBookingsData() {
             globalGroupedBookings = {};
             let customers = {};
@@ -194,76 +272,15 @@
                     }
                 }
 
+                let validDates = getValidDates(data);
+                let parsedHours = getParsedHours(time);
                 let cleanPrice = getRawIntegerPrice(rawPrice);
-                let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date();
                 
-                let combinedString = String(data.date || "") + " " + String(data.ngayDat || "") + " " + String(data.bookingDate || "") + " " + String(data.ngay_dat || "") + " " + String(data.ngay || "") + " " + String(time) + " " + String(data.timeSlot || "");
-                let dateRegex = /\b(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})\b/g;
-                let matches = [...combinedString.matchAll(dateRegex)];
-                let parsedDates = [];
-                
-                matches.forEach(m => {
-                    let p1 = parseInt(m[1]), p2 = parseInt(m[2]), p3 = parseInt(m[3]), d, mo, y;
-                    if (p1 > 1000) { y = p1; mo = p2; d = p3; } 
-                    else if (p3 > 1000) { d = p1; mo = p2; y = p3; } 
-                    else { return; } 
-                    if (y >= 2020 && y <= 2100 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
-                        parsedDates.push(new Date(y, mo - 1, d));
-                    }
-                });
-                parsedDates.sort((a, b) => a.getTime() - b.getTime());
-
-                let validDates = [];
-                if (parsedDates.length >= 2) {
-                    let startDate = parsedDates[0];
-                    let endDate = parsedDates[parsedDates.length - 1];
-                    let currDate = new Date(startDate);
-                    let loopCount = 0; 
-                    while (currDate <= endDate && loopCount < 52) { 
-                        let y = currDate.getFullYear(), m = String(currDate.getMonth() + 1).padStart(2, '0'), day = String(currDate.getDate()).padStart(2, '0');
-                        validDates.push(`${y}-${m}-${day}`);
-                        currDate.setDate(currDate.getDate() + 7);
-                        loopCount++;
-                    }
-                } else if (parsedDates.length === 1) {
-                    let y = parsedDates[0].getFullYear(), m = String(parsedDates[0].getMonth() + 1).padStart(2, '0'), day = String(parsedDates[0].getDate()).padStart(2, '0');
-                    validDates.push(`${y}-${m}-${day}`);
-                }
-
-                if (validDates.length === 0) {
-                    let y = createdAtDate.getFullYear(), m = String(createdAtDate.getMonth() + 1).padStart(2, '0'), day = String(createdAtDate.getDate()).padStart(2, '0');
-                    validDates.push(`${y}-${m}-${day}`);
-                }
-                validDates = [...new Set(validDates)];
-
-                let groupHours = new Set();
-                let str = String(time).toLowerCase();
-                
-                // Thuật toán /g đảm bảo quét ra mọi mảng giờ (Ví dụ: 18:00 - 19:00, 19:00 - 20:00)
-                let rangeRegex = /(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/g;
-                let rMatches = [...str.matchAll(rangeRegex)];
-                if (rMatches.length > 0) {
-                    rMatches.forEach(m => {
-                        let s = parseInt(m[1]); let e = parseInt(m[2]);
-                        if (s >= 5 && e > s) { 
-                            for(let h = s; h < e; h++) {
-                                if (h <= 19) groupHours.add(h); 
-                            }
-                        }
-                    });
-                } else {
-                    let singleRegex = /(\d{1,2})(?::\d{2}|h|g)/g;
-                    let sMatches = [...str.matchAll(singleRegex)];
-                    sMatches.forEach(m => {
-                        let h = parseInt(m[1]);
-                        if (h >= 5 && h <= 19) groupHours.add(h);
-                    });
-                }
-
                 if (cleanPrice === 0) {
                     let calculatedBasePrice = 0; let minHour = 24;
-                    groupHours.forEach(h => { calculatedBasePrice += (h >= 17) ? 120000 : 80000; if (h < minHour) minHour = h; });
+                    parsedHours.forEach(h => { calculatedBasePrice += (h >= 17) ? 120000 : 80000; if (h < minHour) minHour = h; });
                     if (minHour < 24) {
+                        let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)) : new Date();
                         let createdMinutes = createdAtDate.getHours() * 60 + createdAtDate.getMinutes();
                         let startMinutes = minHour * 60;
                         let diff = startMinutes - createdMinutes;
@@ -272,7 +289,7 @@
                     cleanPrice = calculatedBasePrice > 0 ? calculatedBasePrice : 80000;
                 }
 
-                // GỘP NHÓM THÔNG MINH BẰNG MÃ BOOKING HOẶC TÊN KHÁCH (Loại bỏ thuộc tính "court" khỏi Key để dồn chung khối)
+                // Gộp theo bCode (Để tính tiền trên bảng)
                 const groupKey = `${bCode}_${cName}_${validDates.join('_')}`;
 
                 if (!globalGroupedBookings[groupKey]) {
@@ -281,16 +298,14 @@
                         totalPrice: cleanPrice, status: status, times: [time],
                         hasRealPrice: rawPrice > 0, services: [...extraServices], 
                         dateYMDs: validDates, 
-                        parsedHours: Array.from(groupHours)
+                        parsedHours: parsedHours
                     };
                 } else {
                     globalGroupedBookings[groupKey].docIds.push(docId); 
                     
-                    // Nối thêm Sân nếu chưa có
                     if (!globalGroupedBookings[groupKey].court.includes(court)) {
                         globalGroupedBookings[groupKey].court += ", " + court;
                     }
-
                     if (rawPrice > 0) {
                         if (!globalGroupedBookings[groupKey].hasRealPrice) {
                             globalGroupedBookings[groupKey].totalPrice = cleanPrice;
@@ -299,16 +314,13 @@
                     } else if (!globalGroupedBookings[groupKey].hasRealPrice) {
                         globalGroupedBookings[groupKey].totalPrice += cleanPrice;
                     }
-                    
                     if (!globalGroupedBookings[groupKey].times.includes(time)) {
                         globalGroupedBookings[groupKey].times.push(time); 
                     }
                     if (extraServices.length > 0) {
                         globalGroupedBookings[groupKey].services.push(...extraServices);
                     }
-                    
-                    // Hợp nhất các Khung giờ
-                    Array.from(groupHours).forEach(h => {
+                    parsedHours.forEach(h => {
                         if (!globalGroupedBookings[groupKey].parsedHours.includes(h)) {
                             globalGroupedBookings[groupKey].parsedHours.push(h);
                         }
@@ -451,29 +463,44 @@
             }
         }
 
+        // ==============================================
+        // TÁCH BIỆT HOÀN TOÀN CƠ CHẾ VẼ TIMELINE ĐỂ NGĂN SO LE LỖI GROUP
+        // ==============================================
         function renderTimelineView() {
             const timelineContainer = document.getElementById('timelineContainer');
             const selectedDate = calendarDateInput.value;
             const startHour = 5;
-            const endHour = 19; // Kết thúc bằng mốc 19:00 - 20:00
+            const endHour = 19; 
 
             let timelineData = {};
             for(let h = startHour; h <= endHour; h++) {
                 timelineData[h] = { "1": null, "2": null, "3": null, "4": null };
             }
 
-            Object.values(globalGroupedBookings).forEach(group => {
-                if (group.dateYMDs.includes(selectedDate)) {
-                    let courtsStr = String(group.court);
+            // Quét thẳng vào cục Dữ liệu thô (Tránh mọi lỗi merge array)
+            globalRawDocs.forEach((firebaseDoc) => {
+                const data = firebaseDoc.data();
+                const validDates = getValidDates(data);
+                
+                if (validDates.includes(selectedDate)) {
+                    let courtsStr = String(data.court || data.san || "").toLowerCase();
                     let cIndices = [];
                     if (courtsStr.includes('1')) cIndices.push("1");
                     if (courtsStr.includes('2')) cIndices.push("2");
                     if (courtsStr.includes('3')) cIndices.push("3");
                     if (courtsStr.includes('4')) cIndices.push("4");
 
-                    cIndices.forEach(cIndex => {
-                        group.parsedHours.forEach(h => {
-                            if(timelineData[h]) timelineData[h][cIndex] = group;
+                    let hours = getParsedHours(data.timeSlot || data.time || data.gioDat || "");
+
+                    cIndices.forEach(c => {
+                        hours.forEach(h => {
+                            if(timelineData[h] !== undefined) {
+                                // Ghi đè vào ô trống, đảm bảo 100% hiển thị
+                                timelineData[h][c] = {
+                                    customerName: data.customerName || data.name || "Khách",
+                                    status: data.status || data.trangThai || "Chưa thanh toán"
+                                };
+                            }
                         });
                     });
                 }
