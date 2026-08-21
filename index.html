@@ -39,6 +39,10 @@
         .login-header h2 { font-size: 1.8rem; color: #1e293b; margin-top: 15px; font-weight: 800; }
         .login-header p { color: #64748b; font-size: 0.95rem; margin-top: 5px; }
         .error-msg { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; font-weight: 600; }
+
+        /* TÍNH NĂNG MỚI: BỐ CỤC CHIA CỘT TRANG DỊCH VỤ */
+        .services-layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+        @media (max-width: 900px) { .services-layout { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -72,7 +76,7 @@
             <li><a class="nav-btn active" data-target="page-dashboard"><i class='bx bx-grid-alt'></i><div class="link-name">Tổng quan</div></a></li>
             <li><a class="nav-btn" data-target="page-calendar"><i class='bx bx-calendar-check'></i><div class="link-name">Lịch Đặt Sân</div></a></li>
             <li><a class="nav-btn" data-target="page-customers"><i class='bx bx-user-circle'></i><div class="link-name">Khách hàng</div></a></li>
-            <li><a class="nav-btn" data-target="page-services"><i class='bx bx-wrench'></i><div class="link-name">Dịch vụ sân</div></a></li>
+            <li><a class="nav-btn" data-target="page-services"><i class='bx bx-wrench'></i><div class="link-name">Dịch vụ & Kho</div></a></li>
             
             <li style="margin-top: auto; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 10px;">
                 <a href="#" id="logoutBtn" style="color: #ef4444;"><i class='bx bx-log-out'></i><div class="link-name" style="font-weight: 600;">Đăng xuất</div></a>
@@ -159,7 +163,7 @@
         </div>
 
         <!-- ==============================================
-             TRANG 2, 3, 4
+             TRANG 2, 3
              ============================================== -->
         <div id="page-calendar" class="page-view">
             <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; flex-wrap: wrap; gap: 10px;">
@@ -191,17 +195,43 @@
             </div>
         </div>
 
+        <!-- ==============================================
+             TRANG 4: DỊCH VỤ & KHO HÀNG (TÍNH NĂNG MỚI)
+             ============================================== -->
         <div id="page-services" class="page-view">
             <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                <h1 class="page-title">Dịch Vụ & Yêu Cầu</h1>
-                <button type="button" class="btn-primary" id="newRequestBtn"><i class='bx bx-plus'></i> Thêm Yêu Cầu Mới</button>
-            </div>
-            <div class="service-tracker-card">
-                <div class="card-header-flex">
-                    <h3>Danh sách chờ xử lý</h3>
-                    <span style="font-size: 0.85rem; color: var(--text-muted);">Click vào thẻ để đánh dấu Hoàn thành & Cộng tiền</span>
+                <div>
+                    <h1 class="page-title" style="margin-bottom: 5px;">Dịch Vụ & Kho Hàng</h1>
+                    <p class="page-subtitle" style="margin: 0;">Quản lý yêu cầu từ khách và tồn kho thực tế</p>
                 </div>
-                <div class="service-grid" id="requestList"></div>
+                <button type="button" class="btn-primary" id="newRequestBtn" style="height: fit-content;"><i class='bx bx-plus'></i> Thêm Yêu Cầu Mới</button>
+            </div>
+
+            <div class="services-layout">
+                <!-- Cột 1: Danh sách yêu cầu -->
+                <div class="service-tracker-card">
+                    <div class="card-header-flex">
+                        <h3>Danh sách chờ xử lý</h3>
+                        <span style="font-size: 0.85rem; color: var(--text-muted);">Click vào thẻ để Hoàn thành & Trừ kho</span>
+                    </div>
+                    <div class="service-grid" id="requestList"></div>
+                </div>
+
+                <!-- Cột 2: Kho hàng (Inventory) -->
+                <div style="background: var(--card-bg); padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="font-size: 1.05rem; color: var(--text-dark); margin: 0;"><i class='bx bx-package' style="color: var(--primary-color);"></i> Tồn Kho Hiện Tại</h3>
+                        <button type="button" class="btn-primary" id="restockBtn" style="padding: 6px 12px; font-size: 0.85rem; background: #3b82f6; border: none;"><i class='bx bx-archive-in'></i> Nhập Kho</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="booking-table" style="width: 100%; font-size: 0.85rem;">
+                            <thead><tr><th style="text-align:left;">Món</th><th>Giá Bán</th><th>Tồn</th></tr></thead>
+                            <tbody id="inventoryTbody">
+                                <tr><td colspan="3" style="text-align: center; color: gray;">Đang kết nối kho hàng...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
@@ -224,19 +254,16 @@
         <p>Khách hàng: <span id="rName"></span></p>
         <p>Sân: <span id="rCourt" style="font-weight: bold;"></span></p>
         <p>Giờ chơi: <span id="rTime" style="font-weight: bold;"></span></p>
-        
         <div id="rServicesArea" style="display: none; margin-top: 10px;">
             <p style="text-decoration: underline; font-weight: bold;">Dịch vụ thêm:</p>
-            <ul id="rServicesList" style="list-style-type: none; padding-left: 5px; margin-top: 5px; font-size: 0.85rem; line-height: 1.5;">
-            </ul>
+            <ul id="rServicesList" style="list-style-type: none; padding-left: 5px; margin-top: 5px; font-size: 0.85rem; line-height: 1.5;"></ul>
         </div>
-
         <div class="divider"></div>
         <p class="total">TỔNG THANH TOÁN: <span id="rTotal"></span></p>
         <p style="text-align:center; margin-top:20px; font-size:0.8rem;">Cảm ơn quý khách!</p>
     </div>
 
-    <!-- MODAL 1: ĐẶT SÂN MỚI (ĐÃ CẬP NHẬT LOGIC TÍNH GIÁ ĐỘNG) -->
+    <!-- MODAL ĐẶT SÂN MỚI -->
     <div class="modal-overlay" id="bookingModal">
         <div class="modal-container">
             <div class="modal-header">
@@ -251,7 +278,6 @@
                     </div>
                     <div class="form-group">
                         <label>Chọn Sân</label>
-                        <!-- Giá trị sân chỉ truyền tên Sân để hệ thống JS tự động tính tiền chuẩn xác nhất -->
                         <select id="courtSelect" class="modal-input" required>
                             <option value="Sân 1">Sân 1</option>
                             <option value="Sân 2">Sân 2</option>
@@ -285,7 +311,6 @@
                     <div class="form-group">
                         <label>Tổng Tiền Cần Thu (VNĐ)</label>
                         <input type="number" id="editPrice" class="modal-input" required>
-                        <small style="color: var(--text-muted);">Nhập số tiền cuối cùng (Ví dụ: 180000)</small>
                     </div>
                     <button type="submit" id="submitEdit" class="btn-primary btn-full-width">Lưu Chỉnh Sửa</button>
                 </form>
@@ -318,6 +343,36 @@
                         </select>
                     </div>
                     <button type="submit" id="submitRequest" class="btn-primary btn-full-width">Ghi Nhận Yêu Cầu</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- TÍNH NĂNG MỚI: MODAL NHẬP KHO -->
+    <div class="modal-overlay" id="restockModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Nhập Thêm Hàng Vào Kho</h2>
+                <button type="button" class="close-modal-btn" id="closeRestockModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="restockForm">
+                    <div class="form-group">
+                        <label>Chọn Món Cần Nhập</label>
+                        <select id="restockItem" class="modal-input" required>
+                            <option value="1 chai Revive|15000">1 chai Revive</option>
+                            <option value="1 bình trà đá|10000">1 bình trà đá</option>
+                            <option value="1 ống cầu Tiến Bộ|200000">1 ống cầu Tiến Bộ</option>
+                            <option value="1 ống cầu 88|320000">1 ống cầu 88</option>
+                            <option value="1 ống cầu VinaStar|290000">1 ống cầu VinaStar</option>
+                            <option value="Thuê cây vợt|100000">Thuê cây vợt</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Số Lượng Thêm Vào (Ví dụ: 50)</label>
+                        <input type="number" id="restockQty" class="modal-input" required min="1">
+                    </div>
+                    <button type="submit" id="submitRestock" class="btn-primary btn-full-width">Xác Nhận Nhập Kho</button>
                 </form>
             </div>
         </div>

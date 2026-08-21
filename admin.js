@@ -1,11 +1,10 @@
 // XỬ LÝ LOGIC ĐĂNG NHẬP (Cửa ải bảo vệ)
-        const ADMIN_PASS = "admin"; // <--- Đổi mật khẩu của bạn tại đây
+        const ADMIN_PASS = "admin";
         const loginOverlay = document.getElementById('loginOverlay');
         const loginForm = document.getElementById('loginForm');
         const passInput = document.getElementById('adminPassword');
         const loginError = document.getElementById('loginError');
 
-        // Kiểm tra xem đã đăng nhập trước đó chưa
         if (localStorage.getItem('apex_logged_in') === 'true') {
             loginOverlay.style.display = 'none';
         }
@@ -25,7 +24,7 @@
         document.getElementById('logoutBtn').addEventListener('click', (e) => {
             e.preventDefault();
             localStorage.removeItem('apex_logged_in');
-            location.reload(); // F5 lại web, màn hình đăng nhập sẽ tự động hiện ra
+            location.reload(); 
         });
 
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -47,11 +46,11 @@
         const db = getFirestore(app);
         const bookingsCollection = collection(db, "bookings");
         const requestsCollection = collection(db, "requests");
+        const inventoryCollection = collection(db, "inventory"); // KHỞI TẠO BỘ NHỚ KHO HÀNG
 
         const tbody = document.getElementById('bookingTbody');
         const reqList = document.getElementById('requestList');
         const notifBadge = document.getElementById('notificationBadge');
-        
         const dateFilterInput = document.getElementById('dashboardDateFilter');
         const calendarDateInput = document.getElementById('calendarDateFilter');
         
@@ -59,6 +58,7 @@
         let globalRawDocs = []; 
         let globalGroupedBookings = {};
         let myRevenueChart = null; 
+        let globalInventory = {}; // Biến lưu tạm kho hàng để check số lượng
 
         const today = new Date();
         const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
@@ -97,7 +97,6 @@
             });
 
             if (hours.length === 0) return validTimes.join(', ');
-
             hours = [...new Set(hours)].sort((a, b) => a - b);
             let result = [];
             let start = hours[0];
@@ -155,7 +154,6 @@
                 }
 
                 let cleanPrice = getRawIntegerPrice(rawPrice);
-                
                 let createdAtDate = data.createdAt ? (data.createdAt.toDate ? data.createdAt.toDate() : new Date()) : new Date();
                 let docDateYMD = createdAtDate.getFullYear() + '-' + String(createdAtDate.getMonth() + 1).padStart(2, '0') + '-' + String(createdAtDate.getDate()).padStart(2, '0');
                 
@@ -174,25 +172,18 @@
                     }
                 }
 
-                // 🔥 THUẬT TOÁN TÍNH GIÁ ĐỘNG MỚI (ĐỒNG GIÁ 4 SÂN & FLASH SALE) 🔥
                 if (cleanPrice === 0) {
                     let calculatedBasePrice = 0;
                     let minHour = 24;
                     groupHours.forEach(h => {
-                        // >= 17h tính 120k, còn lại 80k
                         calculatedBasePrice += (h >= 17) ? 120000 : 80000;
                         if (h < minHour) minHour = h;
                     });
-
-                    // Kiểm tra Flash Sale (Chỉ áp dụng khi đặt cách giờ chơi từ 30 -> 60 phút)
                     if (minHour < 24) {
                         let createdMinutes = createdAtDate.getHours() * 60 + createdAtDate.getMinutes();
                         let startMinutes = minHour * 60;
                         let diff = startMinutes - createdMinutes;
-                        
-                        if (diff >= 30 && diff <= 60) {
-                            calculatedBasePrice = calculatedBasePrice * 0.7; // Giảm 30%
-                        }
+                        if (diff >= 30 && diff <= 60) calculatedBasePrice = calculatedBasePrice * 0.7; 
                     }
                     cleanPrice = calculatedBasePrice > 0 ? calculatedBasePrice : 80000;
                 }
@@ -334,31 +325,11 @@
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: 'Doanh thu (VNĐ)',
-                            data: dataArray,
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.4,
-                            pointBackgroundColor: '#10b981',
-                            pointBorderColor: '#ffffff',
-                            pointRadius: 5,
-                            pointHoverRadius: 7
+                            label: 'Doanh thu (VNĐ)', data: dataArray,
+                            borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 3, fill: true, tension: 0.4, pointBackgroundColor: '#10b981', pointBorderColor: '#ffffff', pointRadius: 5, pointHoverRadius: 7
                         }]
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { callbacks: { label: function(context) { return context.parsed.y.toLocaleString('vi-VN') + ' VNĐ'; } } }
-                        },
-                        scales: {
-                            y: { beginAtZero: true, ticks: { callback: function(value) { if (value >= 1000000) return (value / 1000000) + ' Tr'; if (value >= 1000) return (value / 1000) + ' K'; return value; } } },
-                            x: { grid: { display: false } }
-                        }
-                    }
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function(context) { return context.parsed.y.toLocaleString('vi-VN') + ' VNĐ'; } } } }, scales: { y: { beginAtZero: true, ticks: { callback: function(value) { if (value >= 1000000) return (value / 1000000) + ' Tr'; if (value >= 1000) return (value / 1000) + ' K'; return value; } } }, x: { grid: { display: false } } } }
                 });
             }
         }
@@ -392,13 +363,7 @@
 
             let html = `<table class="timeline-table">
                 <thead>
-                    <tr>
-                        <th class="time-col">GIỜ</th>
-                        <th>Sân 1</th>
-                        <th>Sân 2</th>
-                        <th>Sân 3 (BWF)</th>
-                        <th>Sân 4 (BWF)</th>
-                    </tr>
+                    <tr><th class="time-col">GIỜ</th><th>Sân 1</th><th>Sân 2</th><th>Sân 3 (BWF)</th><th>Sân 4 (BWF)</th></tr>
                 </thead>
                 <tbody>`;
             
@@ -408,12 +373,7 @@
                     let cellData = timelineData[h][c];
                     if (cellData) {
                         let statusClass = cellData.status === "Đã thanh toán" ? "tl-paid" : "tl-pending";
-                        html += `<td class="tl-cell booked ${statusClass}">
-                                    <div class="tl-content">
-                                        <span class="tl-name">${cellData.customerName}</span>
-                                        <span class="tl-status">${cellData.status}</span>
-                                    </div>
-                                 </td>`;
+                        html += `<td class="tl-cell booked ${statusClass}"><div class="tl-content"><span class="tl-name">${cellData.customerName}</span><span class="tl-status">${cellData.status}</span></div></td>`;
                     } else {
                         html += `<td class="tl-cell free" onclick="openBookingModalWithData('${c}', '${h}')">Trống</td>`;
                     }
@@ -429,9 +389,7 @@
             document.getElementById('timeSelect').value = `${String(hour).padStart(2, '0')}:00 - ${String(parseInt(hour)+1).padStart(2, '0')}:00`;
             let courtSelect = document.getElementById('courtSelect');
             for(let i=0; i<courtSelect.options.length; i++) {
-                if(courtSelect.options[i].text.includes(`Sân ${courtNum}`)) {
-                    courtSelect.selectedIndex = i; break;
-                }
+                if(courtSelect.options[i].text.includes(`Sân ${courtNum}`)) { courtSelect.selectedIndex = i; break; }
             }
         }
 
@@ -448,7 +406,67 @@
         });
 
         // ==============================================
-        // LẮNG NGHE YÊU CẦU DỊCH VỤ
+        // LẮNG NGHE KHO HÀNG (INVENTORY) - TÍNH NĂNG MỚI
+        // ==============================================
+        onSnapshot(inventoryCollection, (snapshot) => {
+            const inventoryTbody = document.getElementById('inventoryTbody');
+            inventoryTbody.innerHTML = "";
+            globalInventory = {};
+
+            if(snapshot.empty) {
+                inventoryTbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: gray;">Kho đang trống. Hãy nhập hàng!</td></tr>';
+            } else {
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    globalInventory[data.itemName] = { id: docSnap.id, stock: data.stock, price: data.price };
+                    
+                    let stockColor = data.stock < 5 ? "color: #ef4444; font-weight: bold;" : "color: #10b981; font-weight: bold;";
+                    let warningIcon = data.stock < 5 ? "<i class='bx bx-error-circle'></i> " : "";
+                    
+                    inventoryTbody.innerHTML += `
+                        <tr>
+                            <td style="text-align:left; font-weight:500;">${data.itemName}</td>
+                            <td>${formatMoney(data.price)}</td>
+                            <td style="${stockColor}">${warningIcon}${data.stock}</td>
+                        </tr>
+                    `;
+                });
+            }
+        });
+
+        // XỬ LÝ NÚT NHẬP KHO
+        document.getElementById('restockBtn').addEventListener('click', () => { document.getElementById('restockModal').classList.add('active'); });
+        document.getElementById('closeRestockModalBtn').addEventListener('click', () => { document.getElementById('restockModal').classList.remove('active'); });
+        
+        document.getElementById('restockForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const itemSelect = document.getElementById('restockItem').value;
+            const qty = parseInt(document.getElementById('restockQty').value);
+            const submitBtn = document.getElementById('submitRestock');
+            
+            submitBtn.innerHTML = "Đang xử lý..."; submitBtn.disabled = true;
+
+            let parts = itemSelect.split('|');
+            let itemName = parts[0];
+            let price = parseInt(parts[1]);
+
+            try {
+                if (globalInventory[itemName]) {
+                    const ref = doc(db, "inventory", globalInventory[itemName].id);
+                    await updateDoc(ref, { stock: globalInventory[itemName].stock + qty });
+                } else {
+                    await addDoc(inventoryCollection, { itemName: itemName, price: price, stock: qty });
+                }
+                document.getElementById('restockForm').reset();
+                document.getElementById('restockModal').classList.remove('active');
+                alert("Nhập kho thành công!");
+            } catch(err) { console.error(err); alert("Lỗi kết nối Firebase!"); }
+            
+            submitBtn.innerHTML = "Xác Nhận Nhập Kho"; submitBtn.disabled = false;
+        });
+
+        // ==============================================
+        // LẮNG NGHE YÊU CẦU DỊCH VỤ & TỰ ĐỘNG TRỪ KHO
         // ==============================================
         onSnapshot(query(requestsCollection, orderBy("createdAt", "desc")), (snapshot) => {
             reqList.innerHTML = ""; 
@@ -472,6 +490,18 @@
                 div.addEventListener('click', async () => {
                     if(confirm("Xác nhận Đã Giao và tính tiền vào hóa đơn khách hàng này?")) {
                         try {
+                            // 1. TỰ ĐỘNG TRỪ KHO (TÍNH NĂNG MỚI)
+                            if(globalInventory[data.itemName]) {
+                                const invRef = doc(db, "inventory", globalInventory[data.itemName].id);
+                                let newStock = globalInventory[data.itemName].stock - 1;
+                                await updateDoc(invRef, { stock: newStock });
+                                
+                                if(newStock < 5 && newStock >= 0) {
+                                    alert(`⚠️ CẢNH BÁO: Món [${data.itemName}] sắp hết! Chỉ còn ${newStock} cái trong kho.`);
+                                }
+                            }
+
+                            // 2. CỘNG TIỀN VÀO BILL NHƯ CŨ
                             if(data.bookingId && data.bookingId !== "vang-lai") {
                                 const allRows = document.querySelectorAll('#bookingTbody tr');
                                 let targetRowHTML = null;
@@ -492,25 +522,20 @@
                                         const ref = doc(db, "bookings", docIdsArray[i]);
                                         if (i === 0) {
                                             await updateDoc(ref, { 
-                                                price: newTotalForGroup, 
-                                                status: "Chưa thanh toán",
-                                                extraServices: servicesArr
+                                                price: newTotalForGroup, status: "Chưa thanh toán", extraServices: servicesArr
                                             });
                                         } else {
                                             await updateDoc(ref, { price: 0, status: "Chưa thanh toán" });
                                         }
                                     }
-                                    alert(`Đã cộng ${formatMoney(data.price)} vào hóa đơn.`);
-                                } else {
-                                    alert("Lỗi: Không tìm thấy hóa đơn của khách trên bảng!");
-                                }
-                            } else { 
-                                alert("Đã hoàn thành giao cho khách vãng lai. Vui lòng thu tiền mặt."); 
-                            }
+                                    alert(`Đã giao hàng và cộng ${formatMoney(data.price)} vào hóa đơn.`);
+                                } else { alert("Lỗi: Không tìm thấy hóa đơn của khách trên bảng!"); }
+                            } else { alert("Đã hoàn thành giao cho khách vãng lai. Vui lòng thu tiền mặt."); }
+                            
+                            // 3. XÓA YÊU CẦU KHỎI DANH SÁCH CHỜ
                             await deleteDoc(doc(db, "requests", docId));
                         } catch (error) { 
-                            console.error(error); 
-                            alert("Lỗi: " + error.message);
+                            console.error(error); alert("Lỗi: " + error.message);
                         }
                     }
                 });
@@ -519,16 +544,12 @@
         });
 
         // ==============================================
-        // TÍNH NĂNG EXPORT CSV
+        // CÁC TÍNH NĂNG CÒN LẠI (GIỮ NGUYÊN)
         // ==============================================
         document.getElementById('exportCsvBtn').addEventListener('click', () => {
-            let csvContent = "\uFEFF"; 
-            csvContent += "Mã Booking,Khách Hàng,Sân/Giờ,Trạng Thái,Tiền\n";
-            
+            let csvContent = "\uFEFFMã Booking,Khách Hàng,Sân/Giờ,Trạng Thái,Tiền\n";
             const rows = document.querySelectorAll('#bookingTbody tr:not(.fade-out)');
-            if(rows.length === 0 || rows[0].innerText.includes("Không có")) {
-                alert("Không có dữ liệu để xuất!"); return;
-            }
+            if(rows.length === 0 || rows[0].innerText.includes("Không có")) { alert("Không có dữ liệu để xuất!"); return; }
 
             rows.forEach(row => {
                 let code = row.querySelector('.booking-id').innerText.trim();
@@ -536,62 +557,45 @@
                 let courtInfo = row.querySelector('strong').innerText.trim() + " (" + row.querySelector('.booking-time-muted').innerText.trim() + ")";
                 let status = row.querySelector('.status-badge').innerText.trim();
                 let price = row.querySelector('.amount').innerText.replace(/,/g, '').replace(' VNĐ', '').trim();
-                
                 csvContent += `"${code}","${name}","${courtInfo}","${status}","${price}"\n`;
             });
 
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a");
-            const url = URL.createObjectURL(blob);
-            link.setAttribute("href", url);
-            link.setAttribute("download", `BaoCao_ApexCourt_${dateFilterInput.value}.csv`);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
+            link.download = `BaoCao_ApexCourt_${dateFilterInput.value}.csv`;
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
         });
 
-        // ==============================================
-        // MENU 3 CHẤM, IN HÓA ĐƠN & EDIT
-        // ==============================================
         let targetRow = null; 
         const actionMenu = document.getElementById('actionMenu');
         
         function attachMenuEvent() {
             document.querySelectorAll('.action-dots').forEach(btn => {
-                const newBtn = btn.cloneNode(true);
-                btn.replaceWith(newBtn);
+                const newBtn = btn.cloneNode(true); btn.replaceWith(newBtn);
                 newBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    targetRow = e.target.closest('tr');
+                    e.stopPropagation(); targetRow = e.target.closest('tr');
                     const status = targetRow.querySelector('.status-badge').innerText.trim();
-
-                    if (status === "Đã thanh toán") {
-                        document.getElementById('btnPay').style.display = "none"; document.getElementById('btnPrint').style.display = "flex";
-                    } else {
-                        document.getElementById('btnPay').style.display = "flex"; document.getElementById('btnPrint').style.display = "none";
-                    }
+                    document.getElementById('btnPay').style.display = status === "Đã thanh toán" ? "none" : "flex";
+                    document.getElementById('btnPrint').style.display = status === "Đã thanh toán" ? "flex" : "none";
                     actionMenu.style.top = (e.pageY + 10) + 'px'; actionMenu.style.left = (e.pageX - 150) + 'px'; actionMenu.classList.add('active');
                 });
             });
         }
-        window.addEventListener('click', () => { actionMenu.classList.remove('active'); });
+        window.addEventListener('click', () => actionMenu.classList.remove('active'));
 
         document.getElementById('btnPay').addEventListener('click', async () => {
             if(targetRow) {
-                const docIds = targetRow.getAttribute('data-id').split(',');
                 try {
-                    for(let id of docIds) { await updateDoc(doc(db, "bookings", id), { status: "Đã thanh toán" }); }
-                    alert("Thanh toán thành công toàn bộ hóa đơn!");
+                    for(let id of targetRow.getAttribute('data-id').split(',')) await updateDoc(doc(db, "bookings", id), { status: "Đã thanh toán" });
+                    alert("Thanh toán thành công!");
                 } catch(e) { console.error(e); }
             }
             actionMenu.classList.remove('active');
         });
 
         document.getElementById('btnDelete').addEventListener('click', async () => {
-            if(confirm('Hủy lịch sân này? (Dữ liệu sẽ bị xóa hoàn toàn)')) {
-                const docIds = targetRow.getAttribute('data-id').split(',');
-                try { for(let id of docIds) { await deleteDoc(doc(db, "bookings", id)); } } catch(e) { console.error(e); }
+            if(confirm('Hủy lịch sân này?')) {
+                try { for(let id of targetRow.getAttribute('data-id').split(',')) await deleteDoc(doc(db, "bookings", id)); } catch(e) { console.error(e); }
             }
             actionMenu.classList.remove('active');
         });
@@ -604,31 +608,22 @@
             }
             actionMenu.classList.remove('active');
         });
-
         document.getElementById('closeEditModalBtn').addEventListener('click', () => document.getElementById('editModal').classList.remove('active'));
 
         document.getElementById('editForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const newName = document.getElementById('editCustomerName').value;
-            const newPrice = parseInt(document.getElementById('editPrice').value);
-            const submitBtn = document.getElementById('submitEdit');
-            
-            submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
-
+            const submitBtn = document.getElementById('submitEdit'); submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
             if(targetRow) {
                 const docIds = targetRow.getAttribute('data-id').split(',');
                 try {
                     for(let i = 0; i < docIds.length; i++) {
-                        const ref = doc(db, "bookings", docIds[i]);
-                        if (i === 0) {
-                            await updateDoc(ref, { customerName: newName, price: newPrice });
-                        } else {
-                            await updateDoc(ref, { customerName: newName, price: 0 });
-                        }
+                        await updateDoc(doc(db, "bookings", docIds[i]), { 
+                            customerName: document.getElementById('editCustomerName').value, 
+                            price: i === 0 ? parseInt(document.getElementById('editPrice').value) : 0 
+                        });
                     }
-                    document.getElementById('editModal').classList.remove('active');
-                    alert("Đã cập nhật thông tin thành công!");
-                } catch(err) { console.error(err); alert("Lỗi kết nối Firebase!"); }
+                    document.getElementById('editModal').classList.remove('active'); alert("Đã cập nhật!");
+                } catch(err) { console.error(err); alert("Lỗi!"); }
             }
             submitBtn.innerHTML = "Lưu Chỉnh Sửa"; submitBtn.disabled = false;
         });
@@ -638,208 +633,75 @@
                 document.getElementById('rDate').innerText = new Date().toLocaleDateString();
                 document.getElementById('rId').innerText = targetRow.querySelector('.booking-id').innerText;
                 document.getElementById('rName').innerText = targetRow.querySelector('.customer-name').innerText;
-                
                 document.getElementById('rCourt').innerText = targetRow.getAttribute('data-court');
                 document.getElementById('rTime').innerText = targetRow.getAttribute('data-time');
-
                 let servicesStr = targetRow.getAttribute('data-services');
                 let servicesArea = document.getElementById('rServicesArea');
                 let servicesList = document.getElementById('rServicesList');
-                
                 servicesList.innerHTML = "";
                 if (servicesStr && servicesStr.trim() !== "") {
                     servicesArea.style.display = "block";
-                    let arr = servicesStr.split('|||');
-                    arr.forEach(item => {
-                        if(item) servicesList.innerHTML += `<li>+ ${item}</li>`;
-                    });
-                } else {
-                    servicesArea.style.display = "none";
-                }
-
+                    servicesStr.split('|||').forEach(item => { if(item) servicesList.innerHTML += `<li>+ ${item}</li>`; });
+                } else { servicesArea.style.display = "none"; }
                 document.getElementById('rTotal').innerText = targetRow.querySelector('.amount').innerText;
                 window.print();
             }
             actionMenu.classList.remove('active');
         });
 
-        // ==============================================
-        // OFFLINE BOOKING & TẠO YÊU CẦU MỚI TÍNH GIÁ ĐỘNG 
-        // ==============================================
         document.getElementById('newBookingBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.add('active'));
         document.getElementById('closeBookingModalBtn').addEventListener('click', () => document.getElementById('bookingModal').classList.remove('active'));
         
         document.getElementById('bookingForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const name = document.getElementById('customerName').value;
-            const courtVal = document.getElementById('courtSelect').value; // Đã đổi chỉ lấy tên sân
-            const timeSlot = document.getElementById('timeSelect').value;
-            const submitBtn = document.getElementById('submitBooking');
-
-            submitBtn.innerHTML = "Đang lưu..."; submitBtn.classList.add('btn-loading'); submitBtn.disabled = true;
-
-            // Tự động tính tiền cho Admin (Có kết hợp Flash sale)
+            const submitBtn = document.getElementById('submitBooking'); submitBtn.innerHTML = "Đang lưu..."; submitBtn.disabled = true;
+            let timeSlot = document.getElementById('timeSelect').value;
             let hours = [];
             let match = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g).*?(?:-|đến|den).*?(\d{1,2})(?::\d{2}|h|g)/i);
-            if (match) {
-                let s = parseInt(match[1]);
-                let e = parseInt(match[2]);
-                if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) hours.push(h); }
-            } else {
-                let singleMatch = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g)/);
-                if (singleMatch) {
-                    let h = parseInt(singleMatch[1]);
-                    if (h >= 5 && h <= 20) hours.push(h);
-                }
-            }
-
-            let courtPrice = 0;
-            let minHour = 24;
-            hours.forEach(h => {
-                courtPrice += (h >= 17) ? 120000 : 80000;
-                if (h < minHour) minHour = h;
-            });
-
+            if (match) { let s = parseInt(match[1]); let e = parseInt(match[2]); if (s >= 5 && s <= 20 && e > s) { for(let h = s; h < e; h++) hours.push(h); } } 
+            else { let singleMatch = String(timeSlot).match(/(\d{1,2})(?::\d{2}|h|g)/); if (singleMatch) { let h = parseInt(singleMatch[1]); if (h >= 5 && h <= 20) hours.push(h); } }
+            
+            let courtPrice = 0; let minHour = 24;
+            hours.forEach(h => { courtPrice += (h >= 17) ? 120000 : 80000; if (h < minHour) minHour = h; });
             const now = new Date();
             if (minHour < 24) {
-                let currentMins = now.getHours() * 60 + now.getMinutes();
-                let startMins = minHour * 60;
-                let diff = startMins - currentMins;
-                if (diff >= 30 && diff <= 60) {
-                    courtPrice = courtPrice * 0.7; // Giảm 30% nếu đặt sát giờ
-                }
+                let diff = (minHour * 60) - (now.getHours() * 60 + now.getMinutes());
+                if (diff >= 30 && diff <= 60) courtPrice = courtPrice * 0.7; 
             }
-
             if (courtPrice === 0) courtPrice = 80000;
 
             try {
-                await addDoc(bookingsCollection, {
-                    bookingCode: '#OFF-' + Math.floor(Math.random() * 9000 + 1000), 
-                    customerName: name + " (Offline)", court: courtVal, price: courtPrice, 
-                    status: "Chưa thanh toán", time: timeSlot, createdAt: serverTimestamp(),
-                    extraServices: [] 
-                });
+                await addDoc(bookingsCollection, { bookingCode: '#OFF-' + Math.floor(Math.random() * 9000 + 1000), customerName: document.getElementById('customerName').value + " (Offline)", court: document.getElementById('courtSelect').value, price: courtPrice, status: "Chưa thanh toán", time: timeSlot, createdAt: serverTimestamp(), extraServices: [] });
                 this.reset(); document.getElementById('bookingModal').classList.remove('active');
-            } catch (e) { alert("Lỗi kết nối Firebase!"); }
-            submitBtn.innerHTML = "Lưu Thông Tin Sân"; submitBtn.classList.remove('btn-loading'); submitBtn.disabled = false;
+            } catch (e) { alert("Lỗi Firebase!"); }
+            submitBtn.innerHTML = "Lưu Thông Tin Sân"; submitBtn.disabled = false;
         });
 
         document.getElementById('newRequestBtn').addEventListener('click', () => {
-            const select = document.getElementById('requestTarget');
-            select.innerHTML = '<option value="vang-lai">Khách vãng lai (Thu tiền mặt)</option>';
-            document.querySelectorAll('#bookingTbody tr').forEach(row => {
-                const id = row.getAttribute('data-id').split(',')[0]; 
-                const name = row.querySelector('.customer-name').innerText;
-                const court = row.querySelector('strong').innerText;
-                select.innerHTML += `<option value="${id}">${court} - ${name}</option>`;
-            });
+            const select = document.getElementById('requestTarget'); select.innerHTML = '<option value="vang-lai">Khách vãng lai (Thu tiền mặt)</option>';
+            document.querySelectorAll('#bookingTbody tr').forEach(row => { select.innerHTML += `<option value="${row.getAttribute('data-id').split(',')[0]}">${row.querySelector('strong').innerText} - ${row.querySelector('.customer-name').innerText}</option>`; });
             document.getElementById('requestModal').classList.add('active');
         });
         document.getElementById('closeRequestModalBtn').addEventListener('click', () => document.getElementById('requestModal').classList.remove('active'));
 
         document.getElementById('requestForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const targetSelect = document.getElementById('requestTarget');
-            const itemSelect = document.getElementById('requestItem');
-            
-            let itemName = "";
-            let itemPrice = 0;
-            
-            if (itemSelect.value.includes('|')) {
-                const parts = itemSelect.value.split('|');
-                itemName = parts[0];
-                itemPrice = parseInt(parts[1]);
-            } else {
-                itemName = itemSelect.value;
-                const textDisplay = itemSelect.options[itemSelect.selectedIndex].text;
-                let priceMatch = textDisplay.match(/(\d+[,.]?\d*)\s*(?:VNĐ|VND|K|đ)/i);
-                if (priceMatch) {
-                    itemPrice = parseInt(priceMatch[1].replace(/[.,]/g, ''));
-                    if (itemPrice < 1000 && textDisplay.toLowerCase().includes('k')) itemPrice *= 1000;
-                }
-            }
-
-            const submitBtn = document.getElementById('submitRequest');
-            const now = new Date();
-            const timeString = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-
-            submitBtn.innerHTML = "Đang gửi..."; submitBtn.classList.add('btn-loading'); submitBtn.disabled = true;
-
+            const submitBtn = document.getElementById('submitRequest'); submitBtn.innerHTML = "Đang gửi..."; submitBtn.disabled = true;
+            let itemName = "", itemPrice = 0, itemSelect = document.getElementById('requestItem');
+            if (itemSelect.value.includes('|')) { const parts = itemSelect.value.split('|'); itemName = parts[0]; itemPrice = parseInt(parts[1]); }
             try {
-                await addDoc(requestsCollection, {
-                    targetName: targetSelect.options[targetSelect.selectedIndex].text,
-                    bookingId: targetSelect.value, 
-                    itemName: itemName, 
-                    price: itemPrice,
-                    time: timeString, createdAt: serverTimestamp()
-                });
-                document.getElementById('requestModal').classList.remove('active');
-                
-                unreadNotifs++;
-                if (notifBadge) { notifBadge.style.display = 'flex'; notifBadge.innerText = unreadNotifs; }
-                const notifList = document.getElementById('notifList');
-                if (notifList) {
-                    notifList.innerHTML = `
-                        <div class="notif-item">
-                            <div class="notif-icon bg-orange-light"><i class='bx bx-bell'></i></div>
-                            <div class="notif-content"><p>Yêu cầu: <strong>${itemName}</strong></p><span>Vừa xong</span></div>
-                        </div>
-                    ` + (notifList.innerHTML.includes('Chưa có thông báo') ? "" : notifList.innerHTML);
-                }
-            } catch (e) { alert("Lỗi kết nối Firebase!"); }
-            submitBtn.innerHTML = "Ghi Nhận Yêu Cầu"; submitBtn.classList.remove('btn-loading'); submitBtn.disabled = false;
+                await addDoc(requestsCollection, { targetName: document.getElementById('requestTarget').options[document.getElementById('requestTarget').selectedIndex].text, bookingId: document.getElementById('requestTarget').value, itemName: itemName, price: itemPrice, time: String(new Date().getHours()).padStart(2, '0') + ':' + String(new Date().getMinutes()).padStart(2, '0'), createdAt: serverTimestamp() });
+                document.getElementById('requestModal').classList.remove('active'); unreadNotifs++; if (notifBadge) { notifBadge.style.display = 'flex'; notifBadge.innerText = unreadNotifs; }
+            } catch (e) { alert("Lỗi Firebase!"); }
+            submitBtn.innerHTML = "Ghi Nhận Yêu Cầu"; submitBtn.disabled = false;
         });
 
-        // UI NAVIGATION & LOCALSTORAGE
         const navLinks = document.querySelectorAll('.nav-btn');
-        navLinks.forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.preventDefault(); navLinks.forEach(l => l.classList.remove('active')); this.classList.add('active');
-                document.querySelectorAll('.page-view').forEach(p => p.classList.remove('active')); document.getElementById(this.getAttribute('data-target')).classList.add('active');
-            });
-        });
-
-        if (localStorage.getItem('apex_theme') === 'dark') {
-            document.body.classList.add('dark-theme');
-            document.querySelector('#darkModeToggle i').className = 'bx bx-sun';
-        }
-
-        document.getElementById('darkModeToggle').addEventListener('click', () => {
-            document.body.classList.toggle('dark-theme');
-            if (document.body.classList.contains('dark-theme')) {
-                document.querySelector('#darkModeToggle i').className = 'bx bx-sun';
-                localStorage.setItem('apex_theme', 'dark');
-            } else {
-                document.querySelector('#darkModeToggle i').className = 'bx bx-moon';
-                localStorage.setItem('apex_theme', 'light');
-            }
-        });
-
-        const notifBtn = document.getElementById('notificationBtn');
-        const notifDropdown = document.getElementById('notificationDropdown');
-        if (notifBtn) {
-            notifBtn.addEventListener('click', (e) => { 
-                e.stopPropagation(); 
-                if (notifDropdown) notifDropdown.classList.toggle('active'); 
-            });
-        }
-
-        const markAllReadBtn = document.getElementById('markAllRead');
-        if (markAllReadBtn) {
-            markAllReadBtn.addEventListener('click', () => {
-                document.getElementById('notifList').innerHTML = '<div style="padding: 15px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">Chưa có thông báo mới</div>';
-                if (notifBadge) notifBadge.style.display = 'none'; 
-                unreadNotifs = 0;
-            });
-        }
-
-        window.addEventListener('click', (e) => { 
-            if (notifDropdown && !notifDropdown.contains(e.target) && e.target !== notifBtn) {
-                notifDropdown.classList.remove('active'); 
-            }
-        });
-
-        const sidebarToggle = document.getElementById('sidebarToggle');
-        if(sidebarToggle) {
-            sidebarToggle.addEventListener('click', () => document.getElementById('sidebar').classList.toggle('active'));
-        }
+        navLinks.forEach(link => { link.addEventListener('click', function(e) { e.preventDefault(); navLinks.forEach(l => l.classList.remove('active')); this.classList.add('active'); document.querySelectorAll('.page-view').forEach(p => p.classList.remove('active')); document.getElementById(this.getAttribute('data-target')).classList.add('active'); }); });
+        if (localStorage.getItem('apex_theme') === 'dark') { document.body.classList.add('dark-theme'); document.querySelector('#darkModeToggle i').className = 'bx bx-sun'; }
+        document.getElementById('darkModeToggle').addEventListener('click', () => { document.body.classList.toggle('dark-theme'); if (document.body.classList.contains('dark-theme')) { document.querySelector('#darkModeToggle i').className = 'bx bx-sun'; localStorage.setItem('apex_theme', 'dark'); } else { document.querySelector('#darkModeToggle i').className = 'bx bx-moon'; localStorage.setItem('apex_theme', 'light'); } });
+        const notifBtn = document.getElementById('notificationBtn'), notifDropdown = document.getElementById('notificationDropdown');
+        if (notifBtn) notifBtn.addEventListener('click', (e) => { e.stopPropagation(); if (notifDropdown) notifDropdown.classList.toggle('active'); });
+        const markAllReadBtn = document.getElementById('markAllRead'); if (markAllReadBtn) markAllReadBtn.addEventListener('click', () => { document.getElementById('notifList').innerHTML = '<div style="padding: 15px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">Chưa có thông báo mới</div>'; if (notifBadge) notifBadge.style.display = 'none'; unreadNotifs = 0; });
+        window.addEventListener('click', (e) => { if (notifDropdown && !notifDropdown.contains(e.target) && e.target !== notifBtn) notifDropdown.classList.remove('active'); });
+        const sidebarToggle = document.getElementById('sidebarToggle'); if(sidebarToggle) sidebarToggle.addEventListener('click', () => document.getElementById('sidebar').classList.toggle('active'));
